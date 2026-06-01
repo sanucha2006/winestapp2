@@ -154,9 +154,9 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* User Info & Sign Out */}
+      {/* User Info (Profile Card) */}
       <div className="relative z-10 px-4 pb-6 border-t border-gray-800 pt-4">
-        <div className="bg-gray-800/60 border border-gray-700/35 rounded-xl p-3 mb-3">
+        <div className="bg-gray-800/60 border border-gray-700/35 rounded-xl p-3">
           <div className="flex items-center gap-3 mb-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shrink-0">
               <span className="text-white text-xs font-bold uppercase">
@@ -177,16 +177,6 @@ export default function Sidebar() {
             {badge.label}
           </div>
         </div>
-
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all duration-200 group"
-        >
-          <div className="w-8 h-8 rounded-lg bg-gray-800 group-hover:bg-red-500/10 flex items-center justify-center transition-all duration-200">
-            <LogOut size={15} />
-          </div>
-          <span className="text-sm font-medium">Sign Out</span>
-        </button>
       </div>
     </aside>
   )

@@ -3,6 +3,12 @@ import { supabase } from '../lib/supabaseClient'
 
 const AuthContext = createContext(null)
 
+function normalizeRole(role) {
+  if (role === 'talent') return 'vtuber'
+  if (role === 'staff') return 'team'
+  return role
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
@@ -37,9 +43,10 @@ export function AuthProvider({ children }) {
       }
       
       if (data && data.role) {
-        console.log('[AuthDebug] Found user role:', data.role)
-        setRole(data.role)
-        return data.role
+        const normalizedRole = normalizeRole(data.role)
+        console.log('[AuthDebug] Found user role:', data.role, 'Normalized:', normalizedRole)
+        setRole(normalizedRole)
+        return normalizedRole
       } else {
         throw new Error('User profile or role not found in database.')
       }
@@ -65,7 +72,7 @@ export function AuthProvider({ children }) {
           }
         }, 0)
 
-        throw new Error(errMsg)
+        throw new Error(errMsg, { cause: err })
       }
     } finally {
       console.log('[AuthDebug] fetchUserRole finally block running')
@@ -131,8 +138,11 @@ export function AuthProvider({ children }) {
         clearTimeout(timer)
       }
     } else {
-      setRole(null)
-      setProfileLoading(false)
+      const timer = setTimeout(() => {
+        setRole(null)
+        setProfileLoading(false)
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [user])
 
