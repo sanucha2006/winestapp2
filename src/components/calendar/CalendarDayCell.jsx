@@ -1,0 +1,64 @@
+import { EVENT_TYPE_CONFIG, getEventsForDate } from '../../lib/calendarUtils'
+
+export default function CalendarDayCell({
+  day,
+  dateStr,
+  events,
+  isToday,
+  isSelected,
+  onClick,
+  displayMode = 'preview-list',
+  maxPreviewItems = 2,
+}) {
+  const dayEvents = getEventsForDate(events, dateStr)
+
+  if (displayMode === 'dots') {
+    const eventTypes = [...new Set(dayEvents.map(event => event.type))]
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`min-h-[44px] p-1 rounded-lg border flex flex-col items-start justify-between text-left transition-all
+          ${isSelected
+            ? 'bg-violet-600/15 border-violet-400/50 ring-1 ring-violet-500/30'
+            : isToday
+              ? 'bg-violet-600/10 border-violet-500/40 text-violet-400 font-bold'
+              : 'bg-[#13131f] border-white/[0.04] text-slate-400 hover:border-violet-500/30'}`}
+      >
+        <span className={`text-[11px] font-bold px-0.5 ${isToday ? 'text-violet-400' : 'text-slate-400'}`}>{day}</span>
+        <div className="flex gap-0.5 px-0.5 pb-0.5">
+          {eventTypes.map(type => (
+            <span key={type} className={`w-1.5 h-1.5 rounded-full shadow ${EVENT_TYPE_CONFIG[type]?.markerClass ?? 'bg-slate-400'}`} />
+          ))}
+        </div>
+      </button>
+    )
+  }
+
+  const overflow = dayEvents.length > maxPreviewItems ? dayEvents.length - maxPreviewItems : 0
+
+  return (
+    <div
+      onClick={onClick}
+      className={`min-h-[68px] p-1.5 rounded-lg border flex flex-col gap-[3px] cursor-pointer transition-all hover:brightness-125
+        ${isSelected
+          ? 'bg-indigo-900/30 border-indigo-400/60 ring-1 ring-indigo-500/30'
+          : isToday
+            ? 'bg-indigo-900/25 border-indigo-500/40'
+            : 'bg-[#13131e] border-white/[0.05] hover:border-white/10'}`}
+    >
+      <span className={`text-[11px] font-bold leading-none ${isToday ? 'text-indigo-400' : 'text-slate-400'}`}>{day}</span>
+      <div className="flex-1 space-y-[2px] overflow-hidden">
+        {dayEvents.slice(0, maxPreviewItems).map(event => {
+          const cfg = EVENT_TYPE_CONFIG[event.type]
+          return (
+            <div key={`${event.type}-${event.id}`} className={`text-[9px] px-1 py-[1px] rounded border truncate leading-tight ${cfg?.previewClass ?? 'bg-slate-700 text-slate-300 border-slate-600'}`}>
+              {cfg?.previewPrefix ?? 'EVT'} {event.title}
+            </div>
+          )
+        })}
+        {overflow > 0 && <div className="text-[9px] text-slate-500 font-bold px-1">+{overflow} more</div>}
+      </div>
+    </div>
+  )
+}

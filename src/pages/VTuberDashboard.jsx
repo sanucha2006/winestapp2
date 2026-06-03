@@ -1,18 +1,18 @@
 // src/pages/VTuberDashboard.jsx
 // ─────────────────────────────────────────────────────────────
 // หน้า Dashboard หลักของ VTuber (Talent)
-// ประกอบด้วย 2 Tab หลัก:
-//   1. ภาพรวมตารางงาน & เควส (OverviewTab) — คิวงานปฏิทิน, เควสรายวัน/รายสัปดาห์/รายเดือน และปุ่มกดส่งเควส
-//   2. เป้าหมาย & สถิติ (GoalsTab) — เส้นทางการเติบโต (Success Journey) สไตล์แผนที่ขุมทรัพย์, สถิติต่างๆ และข้อมูลรายรับ
+// ปรับปรุงธีมสีเป็น Premium Dark Obsidian & Amethyst Theme
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  LayoutDashboard, Trophy, Calendar, CheckCircle2, Star,
-  Target, PlayCircle, Flame, ChevronLeft, ChevronRight, X,
-  Crown, Medal, Loader2, AlertTriangle, Sparkles, Tv2,
+  LayoutDashboard, Trophy, CheckCircle2, Star,
+  Target, Flame, ChevronLeft, ChevronRight, X,
+  Crown, Loader2, AlertTriangle, Sparkles, Tv2,
   Film, Clock, RefreshCw, ChevronDown, ChevronUp, Zap, Banknote, Lock,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import MasterCalendar from '../components/calendar/MasterCalendar'
+import { THAI_MONTHS, toMonthKey } from '../lib/calendarUtils'
 import {
   getMyTalentProfile,
   getStreams,
@@ -27,48 +27,14 @@ import {
 // 🔧 HELPER FUNCTIONS (ฟังก์ชันช่วยคำนวณ & แปลงข้อมูล)
 // ══════════════════════════════════════════════════════════════
 
-/** รายชื่อเดือนภาษาไทยสำหรับแสดงผลในปฏิทิน */
-const THAI_MONTHS = [
-  'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
-  'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม',
-]
-
-/**
- * แปลง Date Object → สตริงในรูปแบบ 'YYYY-MM'
- * @param {Date} date 
- * @returns {string} รูปแบบ 'YYYY-MM'
- */
-function toYearMonth(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
-
-/**
- * แปลงรูปแบบวัน YYYY-MM-DD → DD/MM/YYYY ภาษาไทยเบื้องต้น
- * @param {string} dateStr 
- * @returns {string} รูปแบบ DD/MM/YYYY
- */
-function formatThaiDate(dateStr) {
-  if (!dateStr) return ''
-  const [y, m, d] = dateStr.split('-')
-  return `${d}/${m}/${y}`
-}
-
-/**
- * ตัดเวลาให้เหลือแค่ HH:MM
- * @param {string} timeStr - รูปแบบ HH:MM:SS
- * @returns {string} รูปแบบ HH:MM
- */
-function formatTime(timeStr) {
-  return timeStr?.slice(0, 5) ?? ''
-}
-
 /**
  * รายละเอียดการกำหนดสีและข้อความของแต่ละประเภทความถี่เควส (รายวัน, รายสัปดาห์, รายเดือน)
+ * ปรับโทนสีพาสเทลระดับพรีเมียม สบายตาและเข้ากับพื้นหลังมืด
  */
 const FREQ_CONFIG = {
-  daily:   { label: 'รายวัน',     color: 'cyan',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/30',   text: 'text-cyan-400',   dot: 'bg-cyan-400' },
-  weekly:  { label: 'รายสัปดาห์', color: 'violet', bg: 'bg-violet-500/10', border: 'border-violet-500/30', text: 'text-violet-400', dot: 'bg-violet-400' },
-  monthly: { label: 'รายเดือน',   color: 'amber',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30',  text: 'text-amber-400',  dot: 'bg-amber-400' },
+  daily:   { label: 'รายวัน',     color: 'cyan',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/20',   text: 'text-cyan-400',   dot: 'bg-cyan-400' },
+  weekly:  { label: 'รายสัปดาห์', color: 'violet', bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', dot: 'bg-violet-400' },
+  monthly: { label: 'รายเดือน',   color: 'amber',  bg: 'bg-amber-500/10',  border: 'border-amber-500/20',  text: 'text-amber-400',  dot: 'bg-amber-400' },
 }
 
 /**
@@ -87,7 +53,7 @@ const TARGET_CONFIG = {
  * Skeleton Loader สำหรับใช้ตอนกำลังดาวน์โหลดข้อมูล
  */
 function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse bg-white/[0.05] rounded-lg ${className}`} />
+  return <div className={`animate-pulse bg-white/[0.04] rounded-lg ${className}`} />
 }
 
 /**
@@ -104,8 +70,8 @@ function Toast({ toast, onDismiss }) {
   return (
     <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border text-sm font-semibold transition-all animate-in slide-in-from-bottom-4 duration-300
       ${toast.success
-        ? 'bg-emerald-950 border-emerald-500/40 text-emerald-300'
-        : 'bg-rose-950 border-rose-500/40 text-rose-300'}`}>
+        ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300 backdrop-blur-md'
+        : 'bg-rose-950/90 border-rose-500/40 text-rose-300 backdrop-blur-md'}`}>
       {toast.success ? <Sparkles size={16} className="text-emerald-400" /> : <AlertTriangle size={16} className="text-rose-400" />}
       <span>{toast.message}</span>
       <button onClick={onDismiss} className="ml-2 opacity-60 hover:opacity-100"><X size={14} /></button>
@@ -114,33 +80,14 @@ function Toast({ toast, onDismiss }) {
 }
 
 /**
- * ป้ายแสดงสถานะของวิดีโอ คลิปสั้น หรือสตรีม
- */
-function StatusBadge({ status }) {
-  const MAP = {
-    pending:     { label: 'รอดำเนินการ', cls: 'bg-slate-700/50 text-slate-400' },
-    in_progress: { label: 'กำลังทำ',     cls: 'bg-blue-500/10 text-blue-400' },
-    in_review:   { label: 'รอตรวจ',      cls: 'bg-amber-500/10 text-amber-400' },
-    done:        { label: 'เสร็จแล้ว',    cls: 'bg-emerald-500/10 text-emerald-400' },
-    cancelled:   { label: 'ยกเลิก',       cls: 'bg-rose-500/10 text-rose-400' },
-  }
-  const cfg = MAP[status] ?? MAP.pending
-  return (
-    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap ${cfg.cls}`}>
-      {cfg.label}
-    </span>
-  )
-}
-
-/**
  * กล่องแสดงตัวเลขสถิติขนาดเล็ก (ในหน้าสถิติ & เป้าหมาย)
  */
 function StatMini({ icon, value, label }) {
   return (
-    <div className="bg-[#161622] border border-white/[0.04] rounded-xl p-4 text-center flex flex-col items-center justify-center transition-all hover:border-violet-500/20">
+    <div className="bg-[#13131f] border border-white/[0.05] rounded-xl p-4 text-center flex flex-col items-center justify-center transition-all hover:border-violet-500/20 hover:bg-[#161625]/80">
       <div className="text-violet-400 mb-2">{icon}</div>
       <div className="text-base font-black text-white leading-tight">{value}</div>
-      <div className="text-[10px] text-slate-500 mt-1 leading-tight">{label}</div>
+      <div className="text-[10px] text-slate-400 mt-1 leading-tight">{label}</div>
     </div>
   )
 }
@@ -174,48 +121,60 @@ export default function VTuberDashboard() {
   // ── Effect: โหลดข้อมูลโปรไฟล์ Talent หลัง User เข้าสู่ระบบสำเร็จ ──
   useEffect(() => {
     if (!user?.id) return
-    setLoadingProfile(true)
-    setError(null)
-    getMyTalentProfile(user.id)
-      .then(data => {
-        setTalent(data) // data = null ถ้า admin ยังไม่ได้เชื่อมโปรไฟล์
-      })
-      .catch(e => setError(e.message))
-      .finally(() => setLoadingProfile(false))
+    const timer = setTimeout(() => {
+      setLoadingProfile(true)
+      setError(null)
+      getMyTalentProfile(user.id)
+        .then(data => {
+          setTalent(data) // data = null ถ้า admin ยังไม่ได้เชื่อมโปรไฟล์
+        })
+        .catch(e => setError(e.message))
+        .finally(() => setLoadingProfile(false))
+    }, 0)
+    return () => clearTimeout(timer)
   }, [user?.id])
 
   // ── Effect: โหลดข้อมูลสตรีมและคลิปสั้นตามเดือนที่กำหนด ──
   useEffect(() => {
     if (!talent?.id) return
-    const month = toYearMonth(calMonth)
-    setLoadingCalendar(true)
-    Promise.all([
-      getStreams({ talentId: talent.id, month }),
-      getClips({ talentId: talent.id, month }),
-    ])
-      .then(([s, c]) => { setStreams(s); setClips(c) })
-      .catch(e => setError(e.message))
-      .finally(() => setLoadingCalendar(false))
+    const timer = setTimeout(() => {
+      const month = toMonthKey(calMonth)
+      setLoadingCalendar(true)
+      Promise.all([
+        getStreams({ talentId: talent.id, month }),
+        getClips({ talentId: talent.id, month }),
+      ])
+        .then(([s, c]) => { setStreams(s); setClips(c) })
+        .catch(e => setError(e.message))
+        .finally(() => setLoadingCalendar(false))
+    }, 0)
+    return () => clearTimeout(timer)
   }, [talent?.id, calMonth])
 
   // ── Effect: โหลดรายการเควสของตนเอง ──
   useEffect(() => {
     if (!talent?.id) return
-    setLoadingQuests(true)
-    getQuestTransactions(talent.id)
-      .then(setQuests)
-      .catch(e => setError(e.message))
-      .finally(() => setLoadingQuests(false))
+    const timer = setTimeout(() => {
+      setLoadingQuests(true)
+      getQuestTransactions(talent.id)
+        .then(setQuests)
+        .catch(e => setError(e.message))
+        .finally(() => setLoadingQuests(false))
+    }, 0)
+    return () => clearTimeout(timer)
   }, [talent?.id])
 
   // ── Effect: โหลดสถิติบิล/ส่วนแบ่งรายได้ ──
   useEffect(() => {
     if (!talent?.id) return
-    setLoadingBilling(true)
-    getTalentBilling(talent.id)
-      .then(setBillingRecords)
-      .catch(e => setError(e.message))
-      .finally(() => setLoadingBilling(false))
+    const timer = setTimeout(() => {
+      setLoadingBilling(true)
+      getTalentBilling(talent.id)
+        .then(setBillingRecords)
+        .catch(e => setError(e.message))
+        .finally(() => setLoadingBilling(false))
+    }, 0)
+    return () => clearTimeout(timer)
   }, [talent?.id])
 
   // ── Handler: กดปุ่มส่งเควสไปตรวจสอบเงื่อนไขที่ Database RPC ──
@@ -223,7 +182,7 @@ export default function VTuberDashboard() {
     if (!talent?.id) return
     try {
       const result = await submitQuest(transactionId, talent.id)
-      if (!result) { showToast('ไม่ได้รับผลลัพธ์จากระบบ กรุณลองใหม่', false); return }
+      if (!result) { showToast('ไม่ได้รับผลลัพธ์จากระบบ กรุณาลองใหม่', false); return }
 
       showToast(result.status_message, result.is_success)
 
@@ -244,7 +203,7 @@ export default function VTuberDashboard() {
     } catch (e) {
       showToast(e.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่', false)
     }
-  }, [talent?.id, showToast])
+  }, [talent, showToast])
 
   // กรองเควสที่อยู่ในขอบเขตของปี-เดือนที่แสดงอยู่ในขณะนั้น
   const monthQuests = useMemo(() => {
@@ -263,7 +222,7 @@ export default function VTuberDashboard() {
   // หน้าจอตอนกำลังโหลดข้อมูลหลัก
   if (loadingProfile) {
     return (
-      <div className="min-h-screen bg-[#07070a] flex items-center justify-center">
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="text-violet-400 animate-spin" />
           <p className="text-sm text-slate-400">กำลังโหลดข้อมูล...</p>
@@ -275,8 +234,8 @@ export default function VTuberDashboard() {
   // หน้าจอแสดง Error
   if (error && !talent) {
     return (
-      <div className="min-h-screen bg-[#07070a] flex items-center justify-center p-4">
-        <div className="bg-rose-950/50 border border-rose-500/30 rounded-2xl p-6 max-w-sm text-center">
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center p-4">
+        <div className="bg-rose-950/40 border border-rose-500/20 rounded-2xl p-6 max-w-sm text-center">
           <AlertTriangle size={32} className="text-rose-400 mx-auto mb-3" />
           <p className="text-sm text-rose-300 font-medium">{error}</p>
         </div>
@@ -287,17 +246,19 @@ export default function VTuberDashboard() {
   // กรณีล็อกอินด้วยผู้ใช้อื่น/สตาฟ แต่ไม่มีโปรไฟล์ Talent ใน Database
   if (!talent && !loadingProfile) {
     return (
-      <div className="min-h-screen bg-[#07070a] flex items-center justify-center p-4">
-        <div className="bg-[#12121a] border border-amber-500/20 rounded-2xl p-8 max-w-sm text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto">
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center p-4">
+        <div className="bg-[#0d0d16] border border-white/[0.05] rounded-2xl p-8 max-w-sm text-center space-y-4 shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto shadow-md">
             <Crown size={24} className="text-amber-400" />
           </div>
-          <h2 className="text-base font-bold text-slate-200">ยังไม่มีโปรไฟล์ Talent</h2>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            บัญชีนี้ยังไม่ได้ถูกเชื่อมกับโปรไฟล์ Talent<br />
-            กรุณาติดต่อ Admin เพื่อให้สร้างและเชื่อมบัญชีให้
-          </p>
-          <p className="text-[10px] text-slate-600 bg-white/[0.03] rounded-lg px-3 py-2 font-mono">
+          <div className="space-y-1.5">
+            <h2 className="text-base font-bold text-slate-200">ยังไม่มีโปรไฟล์ Talent</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              บัญชีนี้ยังไม่ได้ถูกเชื่อมกับโปรไฟล์ Talent<br />
+              กรุณาติดต่อ Admin เพื่อให้สร้างและเชื่อมบัญชีให้
+            </p>
+          </div>
+          <p className="text-[10px] text-slate-500 bg-white/[0.02] border border-white/[0.04] rounded-lg px-3 py-2 font-mono">
             user_id: {user?.id?.slice(0, 8)}...
           </p>
         </div>
@@ -306,17 +267,17 @@ export default function VTuberDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07070a] text-slate-200 antialiased pb-12">
+    <div className="min-h-screen bg-[#050508] text-slate-200 antialiased pb-12">
       <div className="max-w-5xl mx-auto px-4 pt-6 space-y-5">
 
-        {/* ── Header Profile Bar ── */}
-        <div className="flex items-center justify-between bg-[#12121a] border border-white/[0.04] rounded-2xl px-5 py-3.5 shadow-md">
+        {/* ── Header Profile Bar — Obsidian styling with subtle violet glow shadow ── */}
+        <div className="flex items-center justify-between bg-[#0d0d16] border border-white/[0.05] rounded-2xl px-5 py-3.5 shadow-md shadow-violet-950/5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-violet-600/15 border border-violet-500/25 flex items-center justify-center shadow-inner">
               <Crown size={16} className="text-violet-400" />
             </div>
             <div>
-              <p className="text-[11px] text-slate-500 font-medium">สวัสดี,</p>
+              <p className="text-[11px] text-slate-400 font-medium">สวัสดี,</p>
               <p className="text-sm font-bold text-white leading-tight">
                 {talent?.talent_name ?? '—'}
               </p>
@@ -324,17 +285,17 @@ export default function VTuberDashboard() {
           </div>
 
           {/* ดาวสะสม (Stars) */}
-          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-xl">
+          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 px-4 py-2 rounded-xl">
             <Star size={15} className="text-amber-400 fill-amber-400" />
             <span className="text-base font-black text-amber-300 tabular-nums">
               {(talent?.stars ?? 0).toLocaleString()}
             </span>
-            <span className="text-[10px] text-amber-500/70 font-medium">STARS</span>
+            <span className="text-[10px] text-amber-500/80 font-medium">STARS</span>
           </div>
         </div>
 
-        {/* ── Tab Switcher ── */}
-        <div className="flex bg-[#12121a] border border-white/[0.04] rounded-xl p-1 shadow-md">
+        {/* ── Tab Switcher — Unified Slate Obsidian Card ── */}
+        <div className="flex bg-[#0d0d16] border border-white/[0.05] rounded-xl p-1 shadow-md">
           {TABS.map(tab => {
             const Icon = tab.icon
             const active = activeTab === tab.id
@@ -342,8 +303,10 @@ export default function VTuberDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-150 flex-1 justify-center
-                  ${active ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/[0.03]'}`}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 flex-1 justify-center
+                  ${active 
+                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-indigo-900/20' 
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'}`}
               >
                 <Icon size={14} className="shrink-0" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -391,32 +354,6 @@ export default function VTuberDashboard() {
 // 🗓️ TAB 1: OVERVIEW TAB (ภาพรวมปฏิทิน และ รายการเควสประจำเดือน)
 // ══════════════════════════════════════════════════════════════
 function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCalendar, loadingQuests, onSubmitQuest }) {
-  const [selectedDate, setSelectedDate] = useState(null) // วันที่ถูกเลือก (เมื่อกดที่ปฏิทินเพื่อเปิด Detail)
-
-  const year  = calMonth.getFullYear()
-  const month = calMonth.getMonth()
-
-  // คำนวณวันทั้งหมดในเดือน และ วันแรกของสัปดาห์เริ่มต้นที่วันอะไร (0 = อาทิตย์, 6 = เสาร์)
-  const totalDays    = useMemo(() => new Date(year, month + 1, 0).getDate(), [year, month])
-  const firstDayIdx  = useMemo(() => new Date(year, month, 1).getDay(),     [year, month])
-
-  // ประกอบอาเรย์สำหรับวางลงใน Grid ปฏิทิน (วันที่ว่างๆ ก่อนวันเริ่มเดือน จะเป็น null)
-  const calendarDays = useMemo(() => [
-    ...Array(firstDayIdx).fill(null),
-    ...Array.from({ length: totalDays }, (_, i) => i + 1),
-  ], [firstDayIdx, totalDays])
-
-  const todayStr = new Date().toISOString().split('T')[0]
-
-  // ดึงข้อมูลสตรีมและคลิปสั้นที่เกิดขึ้นในวันที่ผู้ใช้คลิกเลือกในปฏิทิน
-  const activeDayData = useMemo(() => {
-    if (!selectedDate) return null
-    return {
-      streams: streams.filter(s => s.stream_date === selectedDate),
-      clips:   clips.filter(c => c.publish_date === selectedDate),
-    }
-  }, [selectedDate, streams, clips])
-
   // แบ่งกลุ่มเควสตามความถี่ (รายวัน, รายสัปดาห์, รายเดือน)
   const questsByFreq = useMemo(() => {
     const groups = { daily: [], weekly: [], monthly: [] }
@@ -435,90 +372,33 @@ function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCal
     <div className="space-y-5">
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-        {/* ── ส่วนที่ 1: ปฏิทินแสดงงาน (3 ใน 5 ส่วนบน Desktop) ── */}
-        <div className="lg:col-span-3 bg-[#12121a] border border-white/[0.04] rounded-2xl p-5 shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
-              <Calendar size={15} className="text-violet-400" />
-              <span>ตารางคิวงาน</span>
-              {loadingCalendar && <Loader2 size={13} className="text-slate-500 animate-spin" />}
-            </div>
-            
-            {/* ตัวสลับเดือน (ย้อนกลับ / ไปข้างหน้า) */}
-            <div className="flex items-center gap-1.5 bg-[#191924] px-2.5 py-1 rounded-xl border border-white/[0.04]">
-              <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}
-                className="text-slate-400 hover:text-white p-0.5 transition-colors">
-                <ChevronLeft size={15} />
-              </button>
-              <span className="text-xs font-bold text-slate-300 min-w-[110px] text-center">
-                {THAI_MONTHS[month]} {year}
-              </span>
-              <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}
-                className="text-slate-400 hover:text-white p-0.5 transition-colors">
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          </div>
-
-          {/* วันในสัปดาห์ */}
-          <div className="grid grid-cols-7 mb-1.5">
-            {['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'].map(d => (
-              <div key={d} className="text-center text-[10px] font-bold text-slate-600 py-1">{d}</div>
-            ))}
-          </div>
-
-          {/* รายละเอียดวันต่าง ๆ ในปฏิทิน */}
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day, idx) => {
-              if (!day) return <div key={`b-${idx}`} /> // ช่องว่างก่อนเริ่มต้นเดือน
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              const hasStream = streams.some(s => s.stream_date === dateStr)
-              const hasClip   = clips.some(c => c.publish_date === dateStr)
-              const isToday   = dateStr === todayStr
-              const isSelected = dateStr === selectedDate
-
-              return (
-                <button
-                  key={dateStr}
-                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                  className={`min-h-[44px] p-1 rounded-lg border flex flex-col items-start justify-between text-left transition-all
-                    ${isSelected
-                      ? 'bg-violet-600/20 border-violet-400/60 ring-1 ring-violet-500/40'
-                      : isToday
-                        ? 'bg-violet-600/10 border-violet-500/40 text-violet-400'
-                        : 'bg-[#161622] border-white/[0.03] text-slate-400 hover:border-violet-500/40'}`}
-                >
-                  <span className={`text-[11px] font-bold px-0.5 ${isToday ? 'text-violet-400' : ''}`}>{day}</span>
-                  
-                  {/* จุดสัญลักษณ์บ่งบอกว่าในวันดังกล่าวมีงานสตรีมหรือคลิป */}
-                  <div className="flex gap-0.5 px-0.5 pb-0.5">
-                    {hasStream && <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
-                    {hasClip   && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* คำอธิบายความหมายสัญลักษณ์ */}
-          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/[0.04]">
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-              <span className="w-2 h-2 rounded-full bg-violet-400" />ไลฟ์สตรีม
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />คลิปสั้น
-            </div>
-          </div>
+        <div className="lg:col-span-3">
+          <MasterCalendar
+            role="vtuber"
+            currentDate={calMonth}
+            onMonthChange={setCalMonth}
+            streams={streams}
+            clips={clips}
+            loading={loadingCalendar}
+            permissions={{
+              canCreate: false,
+              canEditStatus: false,
+              canDelete: false,
+              canEndStream: false,
+              canViewFinancials: false,
+              canFilterAllTalents: false,
+            }}
+          />
         </div>
 
-        {/* ── ส่วนที่ 2: เควสประจำเดือน (2 ใน 5 ส่วนบน Desktop) ── */}
+        {/* ── ส่วนที่ 2: เควสประจำเดือน — (2 ใน 5 ส่วนบน Desktop) ── */}
         <div className="lg:col-span-2 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
               <Target size={13} className="text-violet-400" /> เควสของฉัน
             </h3>
             {activeQuestCount > 0 && (
-              <span className="text-[10px] bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full font-bold border border-violet-500/20">
+              <span className="text-[10px] bg-[#141420] text-violet-300 px-2 py-0.5 rounded-full font-bold border border-violet-500/20">
                 {activeQuestCount} รายการ
               </span>
             )}
@@ -529,8 +409,8 @@ function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCal
               {[1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
             </div>
           ) : quests.length === 0 ? (
-            <div className="bg-[#12121a] border border-white/[0.04] rounded-2xl p-6 text-center">
-              <Target size={28} className="text-slate-700 mx-auto mb-2" />
+            <div className="bg-[#0d0d16] border border-white/[0.05] rounded-2xl p-6 text-center shadow-md">
+              <Target size={28} className="text-slate-600 mx-auto mb-2" />
               <p className="text-xs text-slate-500">ยังไม่มีเควสที่ได้รับมอบหมาย</p>
             </div>
           ) : (
@@ -558,93 +438,6 @@ function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCal
         </div>
       </div>
 
-      {/* ── Modal รายละเอียดงานในวันที่เลือกในปฏิทิน ── */}
-      {selectedDate && activeDayData && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setSelectedDate(null)}>
-          <div className="bg-[#12121a] border border-violet-500/20 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[70vh]"
-            onClick={e => e.stopPropagation()}>
-            
-            {/* หัว Modal */}
-            <div className="flex justify-between items-center bg-[#161622] px-5 py-4 border-b border-white/5">
-              <span className="text-sm font-bold text-violet-400 flex items-center gap-2">
-                <Calendar size={15} />
-                ตารางงาน {formatThaiDate(selectedDate)}
-              </span>
-              <button onClick={() => setSelectedDate(null)}
-                className="text-slate-500 hover:text-white bg-white/5 p-1 rounded-lg transition-colors">
-                <X size={15} />
-              </button>
-            </div>
-
-            {/* เนื้อหาสตรีมและคลิปสั้นในวันนั้นๆ */}
-            <div className="p-4 overflow-y-auto space-y-4">
-              {activeDayData.streams.length === 0 && activeDayData.clips.length === 0 ? (
-                <div className="text-center py-8">
-                  <Calendar size={28} className="text-slate-700 mx-auto mb-2" />
-                  <p className="text-xs text-slate-500">ไม่มีคิวงานในวันนี้</p>
-                </div>
-              ) : (
-                <>
-                  {/* แสดงรายการสตรีม */}
-                  {activeDayData.streams.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Tv2 size={11} /> ไลฟ์สตรีม ({activeDayData.streams.length})
-                      </p>
-                      {activeDayData.streams.map(s => (
-                        <div key={s.id} className="bg-[#161622] border border-violet-500/15 rounded-xl px-4 py-3">
-                          <div className="flex justify-between items-start gap-2">
-                            <p className="text-xs font-semibold text-slate-200 leading-snug">{s.title}</p>
-                            <StatusBadge status={s.status} />
-                          </div>
-                          <div className="flex items-center gap-3 mt-2">
-                            {s.start_time && (
-                              <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                                <Clock size={10} /> {formatTime(s.start_time)}
-                                {s.end_time ? ` – ${formatTime(s.end_time)}` : ''}
-                              </span>
-                            )}
-                            <span className="text-[10px] text-slate-600">{s.platform}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* แสดงรายการคลิปสั้น */}
-                  {activeDayData.clips.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Film size={11} /> คลิปสั้น ({activeDayData.clips.length})
-                      </p>
-                      {activeDayData.clips.map(c => (
-                        <div key={c.id} className="bg-[#161622] border border-cyan-500/15 rounded-xl px-4 py-3">
-                          <div className="flex justify-between items-start gap-2">
-                            <p className="text-xs font-semibold text-slate-200 leading-snug">{c.idea_title}</p>
-                            <StatusBadge status={c.status} />
-                          </div>
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium
-                              ${c.script_done ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 bg-white/5'}`}>
-                              {c.script_done ? '✓ สคริปต์' : '○ สคริปต์'}
-                            </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium
-                              ${c.thumbnail_done ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-500 bg-white/5'}`}>
-                              {c.thumbnail_done ? '✓ ธัมเนล' : '○ ธัมเนล'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -678,15 +471,15 @@ function QuestCard({ tx, onSubmit }) {
   return (
     <div className={`rounded-xl border transition-all mb-1.5
       ${isDone
-        ? 'bg-emerald-950/20 border-emerald-500/20'
-        : 'bg-[#12121a] border-white/[0.04] hover:border-violet-500/20'}`}>
+        ? 'bg-[#0a1813] border-emerald-500/20 text-slate-300'
+        : 'bg-[#0d0d16] border-white/[0.05] hover:border-violet-500/20 hover:bg-[#11111d]'}`}>
       
       {/* ส่วนเนื้อหาหลัก */}
       <div className="flex items-start gap-2.5 p-3">
         <div className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center shrink-0
-          ${isDone ? 'bg-emerald-500/20' : cfg.bg}`}>
+          ${isDone ? 'bg-emerald-500/20 text-emerald-400' : cfg.bg}`}>
           {isDone
-            ? <CheckCircle2 size={13} className="text-emerald-400" />
+            ? <CheckCircle2 size={13} />
             : <TargetIcon size={13} className={cfg.text} />}
         </div>
 
@@ -699,12 +492,12 @@ function QuestCard({ tx, onSubmit }) {
           {!isDone && (
             <div className="mt-2">
               <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] text-slate-500">
+                <span className="text-[10px] text-slate-400">
                   {current}/{target} {targetCfg.unit}
                 </span>
-                <span className="text-[10px] font-bold text-slate-400">{pct}%</span>
+                <span className="text-[10px] font-bold text-slate-300">{pct}%</span>
               </div>
-              <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500
                     ${pct >= 100 ? 'bg-emerald-500' : 'bg-violet-500'}`}
@@ -715,15 +508,16 @@ function QuestCard({ tx, onSubmit }) {
           )}
 
           {isDone && (
-            <p className="text-[10px] text-emerald-400 mt-1 font-medium">
-              สำเร็จแล้ว! ได้รับ {q.reward_stars} ⭐
+            <p className="text-[10px] text-emerald-400 mt-1 font-medium flex items-center gap-1">
+              <span>สำเร็จแล้ว! ได้รับ</span>
+              <span className="flex items-center gap-0.5 text-amber-400 font-bold bg-amber-500/10 px-1 rounded">{q.reward_stars} ⭐</span>
             </p>
           )}
         </div>
 
         {/* ปุ่มลูกศรเพื่อดูรายละเอียด (แสดงก็ต่อเมื่อมี Description) */}
         {q.description && (
-          <button onClick={() => setExpanded(p => !p)} className="text-slate-600 hover:text-slate-400 transition-colors shrink-0 mt-0.5">
+          <button onClick={() => setExpanded(p => !p)} className="text-slate-500 hover:text-slate-300 transition-colors shrink-0 mt-0.5">
             {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
         )}
@@ -732,7 +526,7 @@ function QuestCard({ tx, onSubmit }) {
       {/* คำอธิบายแบบขยายเพิ่มเติม (Expandable Area) */}
       {expanded && q.description && (
         <div className="px-3 pb-2 -mt-1">
-          <p className="text-[10px] text-slate-500 leading-relaxed bg-white/[0.02] rounded-lg px-3 py-2 border border-white/[0.03]">
+          <p className="text-[10px] text-slate-400 leading-relaxed bg-[#13131f] rounded-lg px-3 py-2 border border-white/[0.03]">
             {q.description}
           </p>
         </div>
@@ -740,20 +534,20 @@ function QuestCard({ tx, onSubmit }) {
 
       {/* ส่วนแสดงของรางวัล และ ปุ่มกดเคลม/ส่งเควส */}
       {!isDone && (
-        <div className="flex items-center justify-between px-3 pb-3 gap-2">
+        <div className="flex items-center justify-between px-3 pb-3 gap-2 border-t border-white/[0.03] pt-2 mt-1">
           <div className="flex items-center gap-1 text-[10px] text-amber-500/80">
             <Star size={10} className="fill-amber-500/80" />
             <span className="font-bold">{q.reward_stars ?? 0}</span>
-            <span className="text-amber-600/60">stars</span>
+            <span className="text-amber-600/70">stars</span>
           </div>
 
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all
+            className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer
               ${pct >= 100
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/50'
-                : 'bg-violet-600/80 hover:bg-violet-600 text-white'}`}
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40'
+                : 'bg-violet-600/85 hover:bg-violet-600 text-white'}`}
           >
             {submitting
               ? <><Loader2 size={11} className="animate-spin" /> ตรวจสอบ...</>
@@ -786,7 +580,7 @@ export function GoalsTab({
 
   // ── 1. ส่วนแบ่งรายได้ของ Talent ในเดือนปัจจุบัน ──
   const currentMonthBilling = useMemo(() => {
-    const periodStr = toYearMonth(calMonth)
+    const periodStr = toMonthKey(calMonth)
     const record = billingRecords.find(r => r.period === periodStr)
     return record ? (Number(record.talent_cut) || 0) : 0
   }, [billingRecords, calMonth])
@@ -888,11 +682,6 @@ export function GoalsTab({
     if (selMonth < currentMonth) return false
 
     // ปีและเดือนตรงกับปัจจุบัน: ตรวจสอบวันที่เริ่มต้นของแต่ละสัปดาห์ (1, 2, 3, 4, 5)
-    // สัปดาห์ที่ 1 เริ่มตั้งแต่วันที่ 1
-    // สัปดาห์ที่ 2 เริ่มตั้งแต่วันที่ 8
-    // สัปดาห์ที่ 3 เริ่มตั้งแต่วันที่ 15
-    // สัปดาห์ที่ 4 เริ่มตั้งแต่วันที่ 22
-    // สัปดาห์ที่ 5 เริ่มตั้งแต่วันที่ 29
     const weekStartDays = [0, 1, 8, 15, 22, 29]
     return currentDay < weekStartDays[weekNum]
   }, [calMonth])
@@ -968,14 +757,14 @@ export function GoalsTab({
   return (
     <div className="space-y-6">
 
-      {/* ส่วนควบคุม และ แสดงหัวข้อเดือน */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#12121a] border border-white/[0.04] p-4 rounded-2xl">
+      {/* ส่วนควบคุม และ แสดงหัวข้อเดือน — Obsidian Card */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#0d0d16] border border-white/[0.05] p-4 rounded-2xl shadow-sm">
         <div>
           <h3 className="text-sm font-bold text-slate-200">เป้าหมาย & สถิติรายเดือน</h3>
-          <p className="text-xs text-slate-500">ผลงานและความสำเร็จของคุณประจำเดือน</p>
+          <p className="text-xs text-slate-400">ผลงานและความสำเร็จของคุณประจำเดือน</p>
         </div>
         
-        <div className="flex items-center gap-1.5 bg-[#191924] px-2.5 py-1 rounded-xl border border-white/[0.04]">
+        <div className="flex items-center gap-1.5 bg-[#141420] px-2.5 py-1 rounded-xl border border-white/[0.04]">
           <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}
             className="text-slate-400 hover:text-white p-0.5 transition-colors">
             <ChevronLeft size={15} />
@@ -990,8 +779,8 @@ export function GoalsTab({
         </div>
       </div>
 
-      {/* สถิติต่างๆ ในเดือน (Stars & Achievements Grid) */}
-      <div className="bg-[#12121a] border border-white/[0.04] rounded-2xl p-5">
+      {/* สถิติต่างๆ ในเดือน (Stars & Achievements Grid) — Premium styling */}
+      <div className="bg-[#0d0d16] border border-white/[0.05] rounded-2xl p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <div className="bg-violet-500/10 p-1.5 rounded-lg border border-violet-500/20">
             <Trophy size={14} className="text-violet-400" />
@@ -1024,7 +813,7 @@ export function GoalsTab({
       </div>
 
       {/* ── แผนที่เส้นทางสู่ความสำเร็จ (Success Journey Timeline) ── */}
-      <div className="bg-[#12121a] border border-white/[0.04] rounded-2xl p-5">
+      <div className="bg-[#0d0d16] border border-white/[0.05] rounded-2xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Flame size={13} className="text-rose-400 animate-pulse" /> เส้นทางสู่ความสำเร็จ
@@ -1053,12 +842,12 @@ export function GoalsTab({
                       setSelectedWeek('milestone')
                       setIsWeekModalOpen(true)
                     }}
-                    className={`w-full p-4 rounded-xl text-left transition-all duration-200 h-full flex flex-col justify-between border
+                    className={`w-full p-4 rounded-xl text-left transition-all duration-200 h-full flex flex-col justify-between border cursor-pointer
                       ${isLocked
-                        ? 'bg-[#12121a]/30 border-white/[0.02] opacity-40 cursor-not-allowed'
+                        ? 'bg-[#0d0d16]/30 border-white/[0.01] opacity-40 cursor-not-allowed'
                         : isSelected && isWeekModalOpen
-                          ? 'bg-amber-500/10 border-amber-500/80 ring-1 ring-amber-500/40 cursor-pointer'
-                          : 'bg-[#161622] border-white/[0.03] hover:border-amber-500/30 cursor-pointer'}`}
+                          ? 'bg-amber-500/10 border-amber-500/80 ring-1 ring-amber-500/30'
+                          : 'bg-[#13131f] border-white/[0.04] hover:border-amber-500/30'}`}
                   >
                     <div className="flex items-start justify-between w-full">
                       <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
@@ -1086,14 +875,14 @@ export function GoalsTab({
             const isSelected = selectedWeek === cell.weekNum
             const isLocked = isWeekLocked(cell.weekNum)
             
-            // เลือกสีสันตกแต่งโหนดตามสถานะความเสร็จสมบูรณ์
+            // เลือกสีสันตกแต่งโหนดตามสถานะความเสร็จสมบูรณ์ — Muted Pastel premium styles
             const theme = isLocked 
-              ? { border: 'border-white/[0.02] bg-[#12121a]/30 opacity-40 cursor-not-allowed', badgeClass: 'bg-[#161622] text-slate-600 border-white/[0.01]' }
+              ? { border: 'border-white/[0.01] bg-[#0d0d16]/30 opacity-40 cursor-not-allowed', badgeClass: 'bg-[#13131f] text-slate-600 border-white/[0.01]' }
               : {
-                  completed:   { border: 'border-emerald-500/20 hover:border-emerald-500/40 bg-emerald-500/5 cursor-pointer', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-                  in_progress: { border: 'border-violet-500/20 hover:border-violet-500/40 bg-violet-500/5 cursor-pointer', badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
-                  pending:     { border: 'border-white/[0.03] hover:border-white/10 bg-[#161622] cursor-pointer', badgeClass: 'bg-white/5 text-slate-400 border-white/5' },
-                  none:        { border: 'border-white/[0.02] hover:border-white/5 bg-[#161622]/50 opacity-60 cursor-pointer', badgeClass: 'bg-white/[0.02] text-slate-500' }
+                  completed:   { border: 'border-emerald-500/20 hover:border-emerald-500/40 bg-[#0e1614] cursor-pointer', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                  in_progress: { border: 'border-violet-500/20 hover:border-violet-500/40 bg-violet-600/5 cursor-pointer', badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+                  pending:     { border: 'border-white/[0.04] hover:border-white/10 bg-[#13131f] cursor-pointer', badgeClass: 'bg-white/5 text-slate-400 border-white/5' },
+                  none:        { border: 'border-white/[0.02] hover:border-white/5 bg-[#13131f]/50 opacity-60 cursor-pointer', badgeClass: 'bg-white/[0.02] text-slate-500' }
                 }[w.status]
 
             return (
@@ -1140,7 +929,7 @@ export function GoalsTab({
                           <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#a78bfa" />
                         </marker>
                       </defs>
-                      <path d="M 0 28 Q 14 4, 28 28 T 56 28" fill="none" stroke="#a78bfa" strokeWidth="3" strokeDasharray="6,4" marker-end="url(#arrow-r)" />
+                      <path d="M 0 28 Q 14 4, 28 28 T 56 28" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeDasharray="6,4" marker-end="url(#arrow-r)" opacity="0.8" />
                     </svg>
                   </div>
                 )}
@@ -1153,7 +942,7 @@ export function GoalsTab({
                           <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#a78bfa" />
                         </marker>
                       </defs>
-                      <path d="M 0 28 Q 14 4, 28 28 T 56 28" fill="none" stroke="#a78bfa" strokeWidth="3" strokeDasharray="6,4" marker-end="url(#arrow-r-2)" />
+                      <path d="M 0 28 Q 14 4, 28 28 T 56 28" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeDasharray="6,4" marker-end="url(#arrow-r-2)" opacity="0.8" />
                     </svg>
                   </div>
                 )}
@@ -1166,7 +955,7 @@ export function GoalsTab({
                           <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#a78bfa" />
                         </marker>
                       </defs>
-                      <path d="M 32 0 Q 56 20, 32 40 T 32 80" fill="none" stroke="#a78bfa" strokeWidth="3" strokeDasharray="6,4" marker-end="url(#arrow-d)" />
+                      <path d="M 32 0 Q 56 20, 32 40 T 32 80" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeDasharray="6,4" marker-end="url(#arrow-d)" opacity="0.8" />
                     </svg>
                   </div>
                 )}
@@ -1179,7 +968,7 @@ export function GoalsTab({
                           <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#a78bfa" />
                         </marker>
                       </defs>
-                      <path d="M 56 28 Q 42 4, 28 28 T 0 28" fill="none" stroke="#a78bfa" strokeWidth="3" strokeDasharray="6,4" marker-end="url(#arrow-l)" />
+                      <path d="M 56 28 Q 42 4, 28 28 T 0 28" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeDasharray="6,4" marker-end="url(#arrow-l)" opacity="0.8" />
                     </svg>
                   </div>
                 )}
@@ -1192,7 +981,7 @@ export function GoalsTab({
                           <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#a78bfa" />
                         </marker>
                       </defs>
-                      <path d="M 56 28 Q 42 4, 28 28 T 0 28" fill="none" stroke="#a78bfa" strokeWidth="3" strokeDasharray="6,4" marker-end="url(#arrow-l-2)" />
+                      <path d="M 56 28 Q 42 4, 28 28 T 0 28" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeDasharray="6,4" marker-end="url(#arrow-l-2)" opacity="0.8" />
                     </svg>
                   </div>
                 )}
@@ -1207,12 +996,12 @@ export function GoalsTab({
             const isSelected = selectedWeek === w.weekNum
             const isLocked = isWeekLocked(w.weekNum)
             const theme = isLocked
-              ? { border: 'border-white/[0.02] bg-[#12121a]/30 opacity-40 cursor-not-allowed', badge: 'bg-[#161622] text-slate-600 border-white/[0.01]' }
+              ? { border: 'border-white/[0.01] bg-[#0d0d16]/30 opacity-40 cursor-not-allowed', badge: 'bg-[#13131f] text-slate-600 border-white/[0.01]' }
               : {
-                  completed:   { border: 'border-emerald-500/20 bg-emerald-500/5', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-                  in_progress: { border: 'border-violet-500/20 bg-violet-500/5', badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
-                  pending:     { border: 'border-white/[0.03] bg-[#161622]', badge: 'bg-white/5 text-slate-400 border-white/5' },
-                  none:        { border: 'border-white/[0.02] bg-[#161622]/50 opacity-60', badge: 'bg-white/[0.02] text-slate-500' }
+                  completed:   { border: 'border-emerald-500/20 bg-[#0e1614]', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                  in_progress: { border: 'border-violet-500/20 bg-violet-600/5', badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+                  pending:     { border: 'border-white/[0.04] bg-[#13131f]', badge: 'bg-white/5 text-slate-400 border-white/5' },
+                  none:        { border: 'border-white/[0.02] bg-[#13131f]/50 opacity-60', badge: 'bg-white/[0.02] text-slate-500' }
                 }[w.status]
 
             return (
@@ -1251,13 +1040,13 @@ export function GoalsTab({
                 
                 {/* เส้นประโค้งนำทางลงมายังสัปดาห์ถัดไปใน Mobile */}
                 <div className="w-12 h-14 flex items-center justify-center my-1 pointer-events-none">
-                  <svg width="48" height="56" viewBox="0 0 48 56" className="overflow-visible">
+                  <svg width="48" height="56" viewBox="0 0 48 56" className="overflow-visible" opacity="0.6">
                     <defs>
                       <marker id="arrow-mob-d" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
                         <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#6b7280" />
                       </marker>
                     </defs>
-                    <path d="M 24 0 Q 40 14, 24 28 T 24 56" fill="none" stroke="#4b5563" strokeWidth="2.5" strokeDasharray="5,4" marker-end="url(#arrow-mob-d)" />
+                    <path d="M 24 0 Q 40 14, 24 28 T 24 56" fill="none" stroke="#4b5563" strokeWidth="2" strokeDasharray="5,4" marker-end="url(#arrow-mob-d)" />
                   </svg>
                 </div>
               </div>
@@ -1271,12 +1060,12 @@ export function GoalsTab({
               setSelectedWeek('milestone')
               setIsWeekModalOpen(true)
             }}
-            className={`w-full p-4 rounded-xl text-left border flex items-center justify-between
+            className={`w-full p-4 rounded-xl text-left border flex items-center justify-between cursor-pointer
               ${isMilestoneLocked
-                ? 'bg-[#12121a]/30 border-white/[0.02] opacity-40 cursor-not-allowed'
+                ? 'bg-[#0d0d16]/30 border-white/[0.01] opacity-40 cursor-not-allowed'
                 : selectedWeek === 'milestone' && isWeekModalOpen
                   ? 'bg-amber-500/10 border-amber-500' 
-                  : 'bg-[#161622] border-white/[0.03] cursor-pointer'}`}
+                  : 'bg-[#13131f] border-white/[0.04]'}`}
           >
             <div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded border border-amber-500/20 bg-amber-500/10 text-amber-400">
@@ -1295,15 +1084,15 @@ export function GoalsTab({
         </div>
       </div>
 
-      {/* ── Modal แสดงรายละเอียดเควสของสัปดาห์ / หรือบทสรุปประจำเดือน ── */}
+      {/* ── Modal แสดงรายละเอียดเควสของสัปดาห์ / หรือบทสรุปประจำเดือน — Premium theme ── */}
       {isWeekModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           onClick={() => setIsWeekModalOpen(false)}>
-          <div className="bg-[#12121a] border border-violet-500/20 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] transition-all animate-in zoom-in-95 duration-200"
+          <div className="bg-[#0d0d16] border border-white/[0.06] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh] transition-all animate-in zoom-in-95 duration-200"
             onClick={e => e.stopPropagation()}>
             
             {/* หัวข้อ Modal */}
-            <div className="flex justify-between items-center bg-[#161622] px-5 py-4 border-b border-white/5">
+            <div className="flex justify-between items-center bg-[#10101b] px-5 py-4 border-b border-white/[0.04]">
               {selectedWeek === 'milestone' ? (
                 <span className="text-sm font-bold text-amber-400 flex items-center gap-2">
                   <Trophy size={16} className="fill-amber-400/20" />
@@ -1322,7 +1111,7 @@ export function GoalsTab({
             </div>
 
             {/* เนื้อหาภายใน Modal */}
-            <div className="p-5 overflow-y-auto space-y-4 max-h-[70vh]">
+            <div className="p-5 overflow-y-auto space-y-4 max-h-[70vh] bg-[#0d0d16]">
               {selectedWeek === 'milestone' ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
@@ -1332,19 +1121,19 @@ export function GoalsTab({
                     <h4 className="text-xs font-bold text-slate-200">{encouragement.title}</h4>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/[0.03] p-4 rounded-xl text-xs text-slate-300 leading-relaxed">
+                  <div className="bg-[#13131f] border border-white/[0.04] p-4 rounded-xl text-xs text-slate-300 leading-relaxed shadow-inner">
                     {encouragement.desc}
                   </div>
 
                   {/* สรุปตัวเลขผลงานรายเดือน */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-[#161622] border border-white/[0.03] p-3 rounded-xl">
-                      <p className="text-[10px] text-slate-500">เควสสำเร็จในเดือนนี้</p>
+                    <div className="bg-[#13131f] border border-white/[0.04] p-3 rounded-xl">
+                      <p className="text-[10px] text-slate-400">เควสสำเร็จในเดือนนี้</p>
                       <p className="text-sm font-bold text-white mt-1">{completedQuestsCount} / {monthQuests.length} เควส</p>
                     </div>
-                    <div className="bg-[#161622] border border-white/[0.03] p-3 rounded-xl">
-                      <p className="text-[10px] text-slate-500">อัตราการผ่านเควส</p>
-                      <p className="text-sm font-bold text-white mt-1">{monthlyCompletionPct}%</p>
+                    <div className="bg-[#13131f] border border-white/[0.04] p-3 rounded-xl">
+                      <p className="text-[10px] text-slate-400">อัตราการผ่านเควส</p>
+                      <p className="text-sm font-bold text-white mt-1 text-emerald-400">{monthlyCompletionPct}%</p>
                     </div>
                   </div>
                 </div>

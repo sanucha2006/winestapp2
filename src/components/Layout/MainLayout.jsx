@@ -2,6 +2,10 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { LogOut, Sparkles } from 'lucide-react'
 
+// ─────────────────────────────────────────────────────────────
+// เลย์เอาต์หลักของระบบ (Main Layout Template)
+// ปรับโทนสีเป็น Premium Dark Obsidian & Amethyst Theme
+// ─────────────────────────────────────────────────────────────
 export default function MainLayout({ children }) {
   const { user, role, signOut } = useAuth()
   const navigate = useNavigate()
@@ -22,19 +26,20 @@ export default function MainLayout({ children }) {
   const displayName = displayEmail.split('@')[0] ?? 'User'
 
   return (
-    <div className="min-h-screen bg-gray-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#050508] text-slate-100 flex flex-col font-sans">
       
-      {/* Universal Top Bar Header */}
-      <header className="bg-gray-900 border-b border-gray-800 h-16 px-4 sm:px-6 flex items-center justify-between shrink-0 relative z-20 shadow-md">
+      {/* Universal Top Bar Header — Obsidian Deep Background with Subtle Border */}
+      <header className="bg-[#0b0b12] border-b border-white/[0.04] h-16 px-4 sm:px-6 flex items-center justify-between shrink-0 relative z-20 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-md">
+          {/* Logo with Amethyst gradient and light glow */}
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-900/20">
             <Sparkles size={16} className="text-white animate-pulse" />
           </div>
           <div>
             <h2 className="text-white font-bold text-sm sm:text-base tracking-tight leading-none">
               {getHeaderTitle()}
             </h2>
-            <p className="text-[10px] sm:text-xs text-slate-500 mt-1.5 hidden sm:block">
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-1.5 hidden sm:block">
               WinestApp Agency Management Hub
             </p>
           </div>
@@ -43,13 +48,13 @@ export default function MainLayout({ children }) {
         {/* Right Side: Account Details & Action Button */}
         <div className="flex items-center gap-4 select-none">
           <div className="flex flex-col items-end">
-            <span className="text-xs font-semibold text-slate-300 capitalize">{displayName}</span>
-            <span className="text-[10px] text-slate-500">{displayEmail}</span>
+            <span className="text-xs font-semibold text-slate-200 capitalize">{displayName}</span>
+            <span className="text-[10px] text-slate-400">{displayEmail}</span>
           </div>
           
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/30 transition-all cursor-pointer h-[32px]"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 hover:border-rose-500/30 transition-all cursor-pointer h-[32px]"
           >
             <LogOut size={13} className="shrink-0" />
             <span>Sign Out</span>
@@ -57,8 +62,8 @@ export default function MainLayout({ children }) {
         </div>
       </header>
 
-      {/* Dynamic Main Workspace Content */}
-      <main className="flex-1 overflow-auto bg-[#07070a]">
+      {/* Dynamic Main Workspace Content — Seamless Midnight Space background */}
+      <main className="flex-1 overflow-auto bg-[#07070c]">
         {children}
       </main>
 
