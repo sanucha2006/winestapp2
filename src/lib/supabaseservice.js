@@ -5,6 +5,10 @@
 // ─────────────────────────────────────────────────────────────
 import { supabase } from './supabaseClient'
 
+/**
+ * [Internal Helper] แปลง 'YYYY-MM' → { start, end } เป็น ISO date string
+ * ใช้ใน getStreams / getClips เพื่อ filter ตามเดือน
+ */
 function getMonthRange(month) {
   const [year, monthNumber] = month.split('-').map(Number)
   const start = `${year}-${String(monthNumber).padStart(2, '0')}-01`
@@ -44,15 +48,18 @@ export async function getTalents() {
   return data // [{ id, talent_name }]
 }
 
-/** ดึงข้อมูล talent ของตัวเองจาก user_id (สำหรับหน้า VTuber) */
+/** ดึงข้อมูล talent ของตัวเองจาก user_id (สำหรับหน้า VTuber)
+ *  ใช้ maybeSingle() แทน single() เพื่อ return null แทน error
+ *  เมื่อยังไม่มี talent record ผูกกับ user นี้
+ */
 export async function getMyTalentProfile(userId) {
   const { data, error } = await supabase
     .from('talents')
     .select('*')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()          // ✅ return null ถ้าไม่พบ แทนการ throw
   if (error) throw error
-  return data
+  return data               // null | talent object
 }
 
 /** ดึงสมาชิกทีมทั้งหมดที่ active */
@@ -113,6 +120,7 @@ export async function createCommission({ title, ownerId, talentId, priority, sta
       title,
       owner_id:      ownerId,
       talent_id:     talentId || null,
+      status:        'pending',
       priority,
       start_date:    startDate,
       end_date:      endDate,
@@ -193,6 +201,7 @@ export async function createStream({ talentId, createdBy, title, streamDate, sta
       stream_date:     streamDate,
       start_time:      startTime || null,
       platform:        platform || 'YouTube',
+      status:          'pending',
       needs_thumbnail: needsThumbnail,
       thumbnail_done:  !needsThumbnail,
     })
@@ -215,7 +224,7 @@ export async function toggleStreamThumbnail(id, currentValue) {
 export async function endStream(id, { endTime, revenue }) {
   const { error } = await supabase
     .from('streams')
-    .update({ status: 'ended', end_time: endTime, revenue })
+    .update({ status: 'done', end_time: endTime, revenue })
     .eq('id', id)
   if (error) throw error
 }
@@ -264,6 +273,7 @@ export async function createClip({ talentId, createdBy, ideaTitle, publishDate, 
       idea_title:      ideaTitle,
       publish_date:    publishDate || null,
       format:          format || 'Short',
+      status:          'pending',
       needs_script:    needsScript,
       script_done:     !needsScript,
       needs_thumbnail: needsThumbnail,
@@ -312,30 +322,72 @@ export async function deleteClip(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 🎯 QUESTS
+// 🎯 QUESTS & QUEST TRANSACTIONS
 // ══════════════════════════════════════════════════════════════
 
-/** ดึง quests ของ talent วันนี้ */
-export async function getTodayQuests(talentId) {
-  const today = new Date().toISOString().split('T')[0]
+/**
+ * ดึง quest transactions ทั้งหมดของ talent (JOIN กับ quests template)
+ * คืนค่าทั้งที่ is_done=true และ false เพื่อให้ UI กรองเองได้
+ * @param {number} talentId
+ */
+export async function getQuestTransactions(talentId) {
   const { data, error } = await supabase
-    .from('quests')
-    .select('*')
+    .from('talent_quest_transactions')
+    .select(`
+      id,
+      current_value,
+      is_done,
+      assigned_date,
+      completed_at,
+      created_at,
+      quests (
+        id,
+        title,
+        description,
+        frequency,
+        target_type,
+        target_value,
+        reward_stars
+      )
+    `)
     .eq('talent_id', talentId)
-    .eq('assigned_date', today)
-    .order('id')
+    .order('assigned_date', { ascending: false })
   if (error) throw error
-  return data
+  return data ?? []
 }
 
-/** toggle is_done ของ quest */
-export async function toggleQuest(id, currentValue) {
-  const { error } = await supabase
-    .from('quests')
-    .update({ is_done: !currentValue })
-    .eq('id', id)
+/**
+ * เรียก Supabase RPC ฟังก์ชัน submit_and_verify_quest
+ * ให้ระบบตรวจสอบ progress จริงจาก clips/streams และแจก stars ถ้าครบ
+ * @param {number} transactionId - talent_quest_transactions.id
+ * @param {number} talentId     - talents.id
+ * @returns {{ is_success: boolean, status_message: string, updated_value: number, final_status: boolean }}
+ */
+export async function submitQuest(transactionId, talentId) {
+  const { data, error } = await supabase.rpc('submit_and_verify_quest', {
+    p_transaction_id: transactionId,
+    p_talent_id: talentId,
+  })
   if (error) throw error
+  // RPC RETURNS TABLE → Supabase JS คืนเป็น array (row แรกคือผลลัพธ์)
+  return data?.[0] ?? null
 }
+
+/**
+ * ดึง stars ปัจจุบันของ talent — ใช้ refresh หลังส่งเควสสำเร็จ
+ * @param {number} talentId
+ */
+export async function getTalentStars(talentId) {
+  const { data, error } = await supabase
+    .from('talents')
+    .select('stars')
+    .eq('id', talentId)
+    .single()
+  if (error) throw error
+  return data?.stars ?? 0
+}
+
+
 
 // ══════════════════════════════════════════════════════════════
 // 💰 BILLING RECORDS (Admin)
@@ -358,6 +410,17 @@ export async function updateBillingStatus(id, status) {
     .update({ status })
     .eq('id', id)
   if (error) throw error
+}
+
+/** ดึง billing records ทั้งหมดของ talent คนนั้น (ให้ client กรอง period เอง) */
+export async function getTalentBilling(talentId) {
+  const { data, error } = await supabase
+    .from('billing_records')
+    .select('*')
+    .eq('talent_id', talentId)
+    .order('period', { ascending: false })
+  if (error) throw error
+  return data ?? []
 }
 
 // ══════════════════════════════════════════════════════════════

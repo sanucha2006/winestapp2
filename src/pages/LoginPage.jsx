@@ -1,72 +1,74 @@
+// src/pages/LoginPage.jsx
+// ─────────────────────────────────────────────────────────────
+// หน้า Login — ตรวจสอบสิทธิ์ผ่าน Supabase Auth
+// หลัง login สำเร็จ AuthContext จะอ่าน role จาก profiles table
+// แล้ว useEffect จะ redirect ไปยังหน้า dashboard ที่ถูกต้องโดยอัตโนมัติ
+// ─────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Sparkles, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  // ── State ──────────────────────────────────────────────────
+  const [email,        setEmail]        = useState('')
+  const [password,     setPassword]     = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [error,        setError]        = useState('')
+
+  // ── Context & Router ───────────────────────────────────────
   const { signIn, user, role, loading: authLoading, authError, setAuthError } = useAuth()
   const navigate = useNavigate()
 
-  // 1. Reactive Navigation: Watch user and role to trigger dashboard navigation
+  // ── Effect: redirect หลังจาก role ถูก resolve ──────────────
+  // ทำงานเมื่อ user + role พร้อมทั้งคู่ และ authLoading เป็น false
+  // role ถูก set โดย AuthContext หลังจาก Supabase Auth สำเร็จ
   useEffect(() => {
-    if (user && role && !authLoading) {
-      console.log('[LoginDebug] Reactive navigation triggered. Role:', role)
-      if (role === 'admin') {
-        console.log('[LoginDebug] Navigating to /admin-dashboard')
-        navigate('/admin-dashboard', { replace: true })
-      } else if (role === 'vtuber') {
-        console.log('[LoginDebug] Navigating to /vtuber-dashboard')
-        navigate('/vtuber-dashboard', { replace: true })
-      } else if (role === 'team') {
-        console.log('[LoginDebug] Navigating to /team-dashboard')
-        navigate('/team-dashboard', { replace: true })
-      }
-    }
+    if (!user || !role || authLoading) return
+    if (role === 'admin')  navigate('/admin-dashboard',  { replace: true })
+    if (role === 'vtuber') navigate('/vtuber-dashboard', { replace: true })
+    if (role === 'team')   navigate('/team-dashboard',   { replace: true })
   }, [user, role, authLoading, navigate])
 
-  // 2. Reactive Errors: Watch global authError and update local state, resetting the local spinner
+  // ── Effect: รับ error จาก AuthContext มาแสดงในฟอร์ม ────────
+  // authError เกิดจากการ re-check session ใน context layer
   useEffect(() => {
-    if (authError) {
-      console.error('[LoginDebug] Global auth error detected:', authError)
-      setError(authError)
-      setLoading(false)
-    }
+    if (!authError) return
+    setError(authError)
+    setLoading(false)
   }, [authError])
 
+  // ── Handler: submit form ────────────────────────────────────
+  /**
+   * เรียก signIn จาก AuthContext → Supabase Auth
+   * ถ้าสำเร็จ ไม่ต้อง navigate ที่นี่ — useEffect ด้านบนจัดการให้
+   * ถ้าล้มเหลว setError เพื่อแสดง Alert ในฟอร์ม
+   */
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    if (setAuthError) {
-      setAuthError(null)
-    }
+    setAuthError?.(null)
     setLoading(true)
-    console.log('[LoginDebug] handleSubmit triggered for email:', email)
 
     try {
-      console.log('[LoginDebug] Awaiting signIn call...')
-      const { data, error: err } = await signIn(email, password)
-      console.log('[LoginDebug] signIn returned. Data:', data, 'Error:', err)
-
-      if (err) {
-        throw err
-      }
-      
-      console.log('[LoginDebug] Auth successful, waiting for reactive role resolution...')
+      const { error: err } = await signIn(email, password)
+      if (err) throw err
+      // เมื่อ signIn สำเร็จ AuthContext จะอัปเดต user → role
+      // useEffect ด้านบนจะ redirect อัตโนมัติ
     } catch (err) {
-      console.error('[LoginDebug] Auth Error Caught:', err)
       setError(err.message || 'Invalid email or password. Please try again.')
       setLoading(false)
     }
   }
 
-  // Combined loading state: either local submit is loading, OR user is authenticated but role is still loading
+  // ── Derived State ──────────────────────────────────────────
+  // แสดง spinner เมื่อ:
+  //   (1) กำลัง submit ฟอร์ม (loading)
+  //   (2) login แล้วแต่ authContext ยังโหลด role ไม่เสร็จ (user && authLoading)
   const isSpinnerLoading = loading || (user && authLoading)
 
+  // ── Render ─────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center relative overflow-hidden p-4">
       {/* Background decorative orbs */}
@@ -74,7 +76,7 @@ export default function LoginPage() {
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-700/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-violet-900/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Floating particles */}
+      {/* Floating particles (decorative) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {[...Array(6)].map((_, i) => (
           <div
@@ -96,6 +98,7 @@ export default function LoginPage() {
         <div className="absolute -inset-0.5 bg-gradient-to-r from-violet-600 to-purple-600 rounded-2xl opacity-20 blur-sm" />
 
         <div className="relative bg-gray-900/80 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl shadow-violet-900/20">
+
           {/* Header */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 shadow-lg shadow-violet-900/50 mb-4">
@@ -123,17 +126,11 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Email Field */}
             <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-300"
-              >
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300">
                 Email Address
               </label>
               <div className="relative">
-                <Mail
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
-                />
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                 <input
                   id="email"
                   type="email"
@@ -148,17 +145,11 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div className="space-y-1.5">
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-300"
-              >
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                 Password
               </label>
               <div className="relative">
-                <Lock
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
-                />
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
@@ -186,24 +177,9 @@ export default function LoginPage() {
             >
               {isSpinnerLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="w-4 h-4 animate-spin"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                   Signing In...
                 </span>

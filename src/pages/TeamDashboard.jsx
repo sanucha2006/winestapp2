@@ -1,7 +1,10 @@
 // src/pages/TeamDashboard.jsx
 // ─────────────────────────────────────────────────────────────
-// เวอร์ชัน Supabase — ดึงข้อมูลจริงจาก DB แทน Mock Data
-// UI และ Logic การกรอง 3 โหมดยังคงเดิมทุกอย่าง
+// หน้า Dashboard หลักของทีม Staff
+// ประกอบด้วย 3 Tab:
+//   1. Master Calendar  — ตารางงานรายเดือน พร้อมเพิ่ม/แก้ไขงาน
+//   2. VTuber Checklist — ติดตาม thumbnails และ scripts
+//   3. Team Pipeline    — Kanban + สรุปรายได้รายเดือน
 // ─────────────────────────────────────────────────────────────
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
@@ -21,9 +24,11 @@ import {
   mapCommission, mapStream, mapClip,
 } from '../lib/supabaseservice'
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// 🎨 UI Components (Shared)
+// ══════════════════════════════════════════════════════════════
+
+/** คืน Tailwind class string สำหรับ badge priority ของ commission */
 function getPriorityBadge(priority) {
   switch (priority) {
     case 'Urgent': return 'bg-red-500/10 text-red-400 border-red-500/20'
@@ -33,6 +38,7 @@ function getPriorityBadge(priority) {
   }
 }
 
+/** Wrapper card มี dark bg + border สำหรับ layout ทั่วทั้งหน้า */
 function Card({ children, className = '' }) {
   return (
     <div className={`bg-[#0f0f17] border border-white/[0.05] rounded-xl shadow-sm ${className}`}>
@@ -41,6 +47,7 @@ function Card({ children, className = '' }) {
   )
 }
 
+/** Loading indicator ตรงกลางหน้า */
 function Spinner({ text = 'กำลังโหลด...' }) {
   return (
     <div className="flex items-center justify-center gap-2 py-12 text-slate-500">
@@ -50,52 +57,68 @@ function Spinner({ text = 'กำลังโหลด...' }) {
   )
 }
 
-// ─────────────────────────────────────────────
-// Month filter helper
-// ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// 🔧 Pure Helper Functions
+// ══════════════════════════════════════════════════════════════
+
+/** แปลง (year, month) → 'YYYY-MM' string สำหรับส่งไป API */
 function toMonthStr(year, month) {
   return `${year}-${String(month + 1).padStart(2, '0')}`
 }
 
+/** คืนเวลาปัจจุบันแบบ 'HH:MM' (24 ชั่วโมง) สำหรับ default end time */
 function getCurrentTime24() {
   const now = new Date()
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 
+/**
+ * คำนวณตัวเลขการเงินของ commission
+ * @param {{ revenue?: number, totalRevenue?: number, partners?: Array<{amount: number}> }} taskOrDraft
+ * @returns {{ gross, companyShare, teamPool, ownerShare, partnersTotal }}
+ */
 function getCommissionFinancials(taskOrDraft) {
   const gross = Number(taskOrDraft.revenue ?? taskOrDraft.totalRevenue ?? 0) || 0
   const partners = taskOrDraft.partners ?? []
-  const companyShare = gross * 0.1
-  const teamPool = gross * 0.9
+  const companyShare  = gross * 0.1                                              // บริษัทได้ 10%
+  const teamPool      = gross * 0.9                                              // ทีมได้ 90%
   const partnersTotal = partners.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-  const ownerShare = Math.max(0, teamPool - partnersTotal)
+  const ownerShare    = Math.max(0, teamPool - partnersTotal)                   // เจ้าของงานได้ส่วนที่เหลือ
 
   return { gross, companyShare, teamPool, ownerShare, partnersTotal }
 }
 
+/**
+ * คำนวณตัวเลขการเงินของ stream
+ * @param {{ revenue: number }} stream
+ * @returns {{ gross, companyShare, talentShare }}
+ */
 function getStreamFinancials(stream) {
   const gross = Number(stream.revenue) || 0
   return {
     gross,
-    companyShare: gross * 0.6,
-    talentShare: gross * 0.4,
+    companyShare: gross * 0.6,   // บริษัทได้ 60%
+    talentShare:  gross * 0.4,   // VTuber ได้ 40%
   }
 }
 
-// ============================================================================
-// 🟪 Main Dashboard Shell
-// ============================================================================
+// ══════════════════════════════════════════════════════════════
+// 🟪 Root Component — TeamDashboard
+// จัดการ state กลาง, โหลดข้อมูล, และส่ง props ลง Tab ย่อย
+// ══════════════════════════════════════════════════════════════
 export default function TeamDashboard() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('calendar')
 
-  // ── Global data state ──
-  const [myProfile,   setMyProfile]   = useState(null)
-  const [talents,     setTalents]     = useState([])   // [{ id, talent_name }]
-  const [teamMembers, setTeamMembers] = useState([])
-  const [teamTasks,   setTeamTasks]   = useState([])
-  const [streams,     setStreams]     = useState([])
-  const [shorts,      setShorts]      = useState([])
+  // ── ข้อมูลหลัก (โหลดจาก Supabase) ──────────────────────────
+  const [myProfile,   setMyProfile]   = useState(null)  // profiles row ของ user ที่ login
+  const [talents,     setTalents]     = useState([])    // [{ id, talent_name }] ทุก VTuber
+  const [teamMembers, setTeamMembers] = useState([])    // สมาชิกทีมสำหรับ dropdown แบ่งรายได้
+  const [teamTasks,   setTeamTasks]   = useState([])    // commission ทั้งหมดที่เกี่ยวข้องกับ user
+  const [streams,     setStreams]     = useState([])    // ตารางสตรีมของเดือนนั้น
+  const [shorts,      setShorts]      = useState([])    // ตารางคลิปสั้นของเดือนนั้น
+
+  // ── UI state ────────────────────────────────────────────────
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
 
@@ -129,7 +152,7 @@ export default function TeamDashboard() {
 
   // ── Fetch data when month changes ──
   const fetchMonthData = useCallback(async () => {
-    if (!user || !myProfile) return
+    if (!user) return
     try {
       const monthStr = toMonthStr(year, month)
       const [rawComms, rawStreams, rawClips] = await Promise.all([
@@ -143,13 +166,10 @@ export default function TeamDashboard() {
     } catch (e) {
       setError(e.message)
     }
-  }, [user, myProfile, year, month])
+  }, [user, year, month])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchMonthData()
-    }, 0)
-    return () => clearTimeout(timer)
+    fetchMonthData()
   }, [fetchMonthData])
 
   // ── Toggle handlers (optimistic update + DB sync) ──
@@ -189,7 +209,7 @@ export default function TeamDashboard() {
   const handleAdvanceTeamTask = async (id) => {
     const task = teamTasks.find(t => t.id === id)
     if (!task) return
-    const nextStatus = task.status === 'todo' ? 'progress' : 'done'
+    const nextStatus = task.status === 'pending' ? 'in_progress' : 'done'
     setTeamTasks(prev => prev.map(t => t.id === id ? { ...t, status: nextStatus } : t))
     try {
       await updateCommissionStatus(id, nextStatus)
@@ -198,6 +218,8 @@ export default function TeamDashboard() {
     }
   }
 
+  // ── Tab Config ──────────────────────────────────────────────
+  // เพิ่ม Tab ใหม่ที่นี่ แล้วเพิ่ม renderer ใน JSX ด้านล่าง
   const TABS = [
     { id: 'calendar', label: 'Master Calendar',  icon: Calendar     },
     { id: 'vtuber',   label: 'เคสงาน',          icon: CheckCircle2 },
@@ -273,9 +295,10 @@ export default function TeamDashboard() {
   )
 }
 
-// ============================================================================
-// 🟦 Master Calendar Tab
-// ============================================================================
+// ══════════════════════════════════════════════════════════════
+// 🟦 Tab 1 — Master Calendar
+// ปฏิทินรายเดือน: กรองงาน 3 โหมด, กดวันเพื่อดู/เพิ่มงาน
+// ══════════════════════════════════════════════════════════════
 function MasterCalendarTab({
   user, myProfile, talents, teamMembers,
   teamTasks, streams, shorts,
@@ -286,38 +309,41 @@ function MasterCalendarTab({
   const year  = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
-  const [filterMode,            setFilterMode]            = useState('my-schedule')
-  const [selectedFilterTalentId,setSelectedFilterTalentId]= useState(null)
-  const [selectedDate,          setSelectedDate]          = useState(null)
-  const [isDetailModalOpen,     setIsDetailModalOpen]     = useState(false)
-  const [isAddModalOpen,        setIsAddModalOpen]        = useState(false)
-  const [endingStream,          setEndingStream]          = useState(null)
-  const [streamEndTime,         setStreamEndTime]         = useState('')
-  const [streamRevenue,         setStreamRevenue]         = useState(0)
-  const [taskType,              setTaskType]              = useState('commission')
-  const [saving,                setSaving]                = useState(false)
+  // ── UI State ─────────────────────────────────────────────────
+  const [filterMode,             setFilterMode]             = useState('my-schedule')  // 'my-schedule' | 'all-vtubers' | 'specific-vtuber'
+  const [selectedFilterTalentId, setSelectedFilterTalentId] = useState(null)           // id ของ VTuber ที่เลือก (โหมด specific)
+  const [selectedDate,           setSelectedDate]           = useState(null)           // วันที่กดในปฏิทิน 'YYYY-MM-DD'
+  const [isDetailModalOpen,      setIsDetailModalOpen]      = useState(false)          // modal แสดงรายการงานของวันนั้น
+  const [isAddModalOpen,         setIsAddModalOpen]         = useState(false)          // modal เพิ่มงานใหม่
+  const [taskType,               setTaskType]               = useState('commission')   // ประเภทงานที่กำลังเพิ่ม: 'commission' | 'stream' | 'clip'
+  const [saving,                 setSaving]                 = useState(false)          // กำลัง submit form
 
-  // Commission form
+  // ── End Stream Modal State ───────────────────────────────────
+  const [endingStream,  setEndingStream]  = useState(null)   // stream object ที่กำลังจะสรุปจบ
+  const [streamEndTime, setStreamEndTime] = useState('')     // เวลาจบ 'HH:MM'
+  const [streamRevenue, setStreamRevenue] = useState(0)     // รายได้จากสตรีมนั้น (บาท)
+
+  // ── Commission Form State ────────────────────────────────────
   const [commName,         setCommName]         = useState('')
   const [commRevenue,      setCommRevenue]      = useState(0)
   const [commStartDate,    setCommStartDate]    = useState('')
   const [commEndDate,      setCommEndDate]      = useState('')
   const [commDesc,         setCommDesc]         = useState('')
   const [commTalentId,     setCommTalentId]     = useState('')
-  const [selectedPartners, setSelectedPartners] = useState([])
-  const [partnerSelect,    setPartnerSelect]    = useState('')
+  const [selectedPartners, setSelectedPartners] = useState([])  // [{ userId, name, amount }]
+  const [partnerSelect,    setPartnerSelect]    = useState('')  // value ของ dropdown เลือก partner
 
-  // Stream form
+  // ── Stream Form State ────────────────────────────────────────
   const [streamTitle,     setStreamTitle]     = useState('')
   const [streamTalentId,  setStreamTalentId]  = useState('')
   const [streamStartTime, setStreamStartTime] = useState('20:00')
   const [streamNeedThumb, setStreamNeedThumb] = useState(true)
   const [streamPlatform,  setStreamPlatform]  = useState('YouTube')
 
-  // Clip form
+  // ── Clip Form State ──────────────────────────────────────────
   const [clipTitle,      setClipTitle]      = useState('')
   const [clipTalentId,   setClipTalentId]   = useState('')
-  const [clipFormat,     setClipFormat]     = useState('Short')
+  const [clipFormat,     setClipFormat]     = useState('Short')  // 'Short' | 'Long'
   const [clipNeedScript, setClipNeedScript] = useState(true)
   const [clipNeedThumb,  setClipNeedThumb]  = useState(true)
 
@@ -330,26 +356,32 @@ function MasterCalendarTab({
   const draftCommissionFinancials = getCommissionFinancials({ revenue: commRevenue, partners: selectedPartners })
   const myAmount = draftCommissionFinancials.ownerShare
 
+  // ── Dropdown: ชื่อ VTuber สำหรับ filter ──
+  const selectedTalentName = talents.find(t => t.id === selectedFilterTalentId)?.talent_name ?? ''
+
   // ── Set default talent เมื่อโหลด talents ──
   useEffect(() => {
     if (talents.length > 0 && !selectedFilterTalentId) {
-      const timer = setTimeout(() => {
-        setSelectedFilterTalentId(talents[0].id)
-        setStreamTalentId(String(talents[0].id))
-        setClipTalentId(String(talents[0].id))
-      }, 0)
-      return () => clearTimeout(timer)
+      setSelectedFilterTalentId(talents[0].id)
+      setStreamTalentId(String(talents[0].id))
+      setClipTalentId(String(talents[0].id))
     }
-  }, [talents, selectedFilterTalentId])
+  }, [talents])
 
-  // ── Filter logic (คง 3 โหมด ไม่แตะ) ──
+  // ── Filter Logic ─────────────────────────────────────────────
+  /**
+   * กรองข้อมูลตามโหมดที่เลือก ก่อนแสดงในปฏิทิน/modal
+   *
+   * โหมด 'my-schedule':     commission ที่ user เป็น owner/partner + stream/clip ที่ user เป็น createdBy
+   * โหมด 'all-vtubers':     stream + clip ทุกคน (ไม่รวม commission)
+   * โหมด 'specific-vtuber': stream + clip เฉพาะ VTuber ที่เลือกจาก dropdown
+   */
   const applyFilter = (comms, strms, clps) => {
     if (filterMode === 'my-schedule') {
-      // commission ที่เราเป็นเจ้าของ หรือมีส่วนร่วม
       return {
         comms,
         strms: strms.filter(s => s.createdBy === user.id),
-        clps: clps.filter(c => c.createdBy === user.id),
+        clps:  clps.filter(c => c.createdBy === user.id),
       }
     }
     if (filterMode === 'all-vtubers') {
@@ -359,13 +391,14 @@ function MasterCalendarTab({
       return {
         comms: [],
         strms: strms.filter(s => s.talentId === selectedFilterTalentId),
-        clps:  clps.filter(c  => c.talentId === selectedFilterTalentId),
+        clps:  clps.filter(c => c.talentId === selectedFilterTalentId),
       }
     }
     return { comms, strms, clps }
   }
 
-  // ── Handlers ──
+  // ── Event Handlers ───────────────────────────────────────────
+  /** กดวันในปฏิทิน → เปิด detail modal */
   const handleDayClick = (dateStr) => { setSelectedDate(dateStr); setIsDetailModalOpen(true) }
 
   const handleOpenAddForm = () => {
@@ -397,7 +430,7 @@ function MasterCalendarTab({
     // DB sync
     try {
       if (type === 'commission' && updates.status) await updateCommissionStatus(id, updates.status)
-      if (type === 'stream' && updates.status === 'ended') await endStream(id, { endTime: updates.endTime, revenue: updates.revenue })
+      if (type === 'stream' && updates.status === 'done') await endStream(id, { endTime: updates.endTime, revenue: updates.revenue })
       if (type === 'stream' && updates.thumbnailDone !== undefined) await dbToggleStreamThumb(id, !updates.thumbnailDone)
       if (type === 'clip' && updates.status) await updateClipStatus(id, updates.status)
       if (type === 'clip' && updates.scriptDone !== undefined) await dbToggleClipScript(id, !updates.scriptDone)
@@ -424,7 +457,7 @@ function MasterCalendarTab({
     e.preventDefault()
     if (!endingStream) return
     await handleToggleStatus('stream', endingStream.id, {
-      status: 'ended',
+      status: 'done',
       endTime: streamEndTime,
       revenue: Math.max(0, Number(streamRevenue) || 0),
     })
@@ -655,11 +688,11 @@ function MasterCalendarTab({
                     ))}
 
                     {dayStrms.map(s => (
-                      <div key={s.id} className={`p-3.5 rounded-xl border text-sm ${s.status === 'ended' ? 'bg-slate-800/40 border-slate-600 opacity-70' : 'bg-purple-900/15 border-purple-500/25'}`}>
+                      <div key={s.id} className={`p-3.5 rounded-xl border text-sm ${s.status === 'done' ? 'bg-slate-800/40 border-slate-600 opacity-70' : 'bg-purple-900/15 border-purple-500/25'}`}>
                         <div className="flex justify-between items-start mb-1.5">
                           <span className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded font-bold uppercase">Live Stream</span>
                           <div className="flex gap-1.5">
-                            {s.status !== 'ended' && (
+                            {s.status !== 'done' && (
                               <button onClick={() => handleOpenEndStreamModal(s)} className="text-[10px] flex items-center gap-1 text-emerald-400 hover:bg-emerald-500/20 px-2 py-0.5 rounded transition-colors">
                                 <CheckCircle size={12} /> จบไลฟ์
                               </button>
@@ -1006,17 +1039,12 @@ function MasterCalendarTab({
   )
 }
 
-// ============================================================================
-// 🟧 VTuber Checklist Tab — ไม่เปลี่ยน UI เลย
-// ============================================================================
-function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStreamThumbnail, toggleClipThumbnail, toggleScript }) {
-  const myId = myProfile?.id
-  const activeCommissions = teamTasks.filter(t => (
-    t.status === 'todo' &&
-    (t.ownerId === myId || t.partners?.some(p => p.userId === myId))
-  ))
-  const myThumbnailStreams = streams.filter(s => s.createdBy === myId && s.needsThumbnail && s.status !== 'ended')
-  const myClipCases = shorts.filter(c => c.createdBy === myId && (c.needsScript || c.needsThumbnail) && c.status !== 'done')
+// ══════════════════════════════════════════════════════════════
+// 🟧 Tab 2 — VTuber Checklist
+// แสดง commission ค้าง + สถานะ thumbnail/script ที่รอดำเนินการ
+// ══════════════════════════════════════════════════════════════
+function VTuberChecklistTab({ teamTasks, streams, shorts, toggleStreamThumbnail, toggleClipThumbnail, toggleScript }) {
+  const activeCommissions = teamTasks.filter(t => t.status === 'pending')
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -1045,7 +1073,7 @@ function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStrea
             <Video size={13} className="text-purple-400" /> ปกสตรีม (Thumbnails)
           </h3>
           <div className="space-y-2">
-            {myThumbnailStreams.map(s => (
+            {streams.filter(s => s.needsThumbnail && s.status !== 'done').map(s => (
               <div key={s.id} className="flex items-center justify-between bg-[#161622] p-3 rounded-xl border border-white/[0.04]">
                 <div className="min-w-0 pr-3">
                   <p className="text-xs font-bold text-slate-200 truncate">{s.title}</p>
@@ -1059,7 +1087,6 @@ function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStrea
                 </button>
               </div>
             ))}
-            {myThumbnailStreams.length === 0 && <p className="text-xs text-slate-500 py-3">ไม่มีเคสปกสตรีมของคุณ</p>}
           </div>
         </Card>
 
@@ -1068,7 +1095,7 @@ function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStrea
             <Film size={13} className="text-pink-400" /> คลิปสั้น (Scripts & Thumbnails)
           </h3>
           <div className="space-y-2">
-            {myClipCases.map(s => (
+            {shorts.filter(c => (c.needsScript || c.needsThumbnail) && c.status !== 'done').map(s => (
               <div key={s.id} className="bg-[#161622] p-3 rounded-xl border border-white/[0.04]">
                 <p className="text-xs font-bold text-slate-200 truncate mb-0.5">{s.idea}</p>
                 <p className="text-[10px] text-slate-500 mb-2">{s.talent} | {s.date?.split('-').reverse().join('/') ?? '-'}</p>
@@ -1090,7 +1117,6 @@ function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStrea
                 </div>
               </div>
             ))}
-            {myClipCases.length === 0 && <p className="text-xs text-slate-500 py-3">ไม่มีเคสคลิปของคุณ</p>}
           </div>
         </Card>
       </div>
@@ -1098,12 +1124,13 @@ function VTuberChecklistTab({ teamTasks, streams, shorts, myProfile, toggleStrea
   )
 }
 
-// ============================================================================
-// 🟩 Team Pipeline Tab — ไม่เปลี่ยน UI เลย
-// ============================================================================
+// ══════════════════════════════════════════════════════════════
+// 🟩 Tab 3 — Team Pipeline & Goals
+// สรุปรายได้รายเดือน + Kanban Board ติดตามสถานะ commission
+// ══════════════════════════════════════════════════════════════
 function TeamPipelineTab({ teamTasks, streams, advanceTeamTask }) {
-  const todoTasks     = teamTasks.filter(t => t.status === 'todo')
-  const progressTasks = teamTasks.filter(t => t.status === 'progress')
+  const todoTasks     = teamTasks.filter(t => t.status === 'pending')
+  const progressTasks = teamTasks.filter(t => t.status === 'in_progress')
   const doneTasks     = teamTasks.filter(t => t.status === 'done')
   const commissionFinancials = teamTasks.reduce((total, task) => {
     const financials = getCommissionFinancials(task)
@@ -1209,7 +1236,10 @@ function TeamPipelineTab({ teamTasks, streams, advanceTeamTask }) {
   )
 }
 
+// ── Sub-component: KanbanCard ───────────────────────────────
+/** การ์ดใน Kanban Board แสดงชื่องาน priority และปุ่มเลื่อน status */
 function KanbanCard({ task, onAdvance, advanceColor = 'indigo', borderCls = 'border-white/[0.05]' }) {
+  // สีปุ่มลูกศร → ขึ้นอยู่กับ column ปัจจุบัน
   const hoverMap = { indigo: 'hover:bg-indigo-600', amber: 'hover:bg-amber-600' }
   return (
     <div className={`bg-[#161622] border ${borderCls} rounded-xl p-3 flex flex-col justify-between`}>
