@@ -1,9 +1,10 @@
+import { memo, useMemo } from 'react'
 import { Calendar, CheckCircle, Clock, Film, Plus, Trash2, Tv2, X } from 'lucide-react'
 import StatusBadge from '../common/StatusBadge'
 import { EVENT_TYPE_CONFIG, formatThaiDate, formatTime } from '../../lib/calendarUtils'
 import { getCommissionFinancials, getStreamFinancials } from '../../lib/financeUtils'
 
-export default function CalendarEventDetailModal({
+function CalendarEventDetailModal({
   date,
   events,
   role,
@@ -15,11 +16,11 @@ export default function CalendarEventDetailModal({
   onDeleteEvent,
   onEndStreamClick,
 }) {
-  const grouped = {
+  const grouped = useMemo(() => ({
     commission: events.filter(event => event.type === 'commission'),
     stream: events.filter(event => event.type === 'stream'),
     clip: events.filter(event => event.type === 'clip'),
-  }
+  }), [events])
   const isEmpty = events.length === 0
 
   return (
@@ -291,3 +292,5 @@ function CheckRow({ label, done, actionLabel, canAct, onClick }) {
     </div>
   )
 }
+
+export default memo(CalendarEventDetailModal)

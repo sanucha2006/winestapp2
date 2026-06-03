@@ -14,9 +14,9 @@ export default function CalendarFilters({
         { mode: 'specific-vtuber', label: 'เลือก VTuber', active: 'bg-pink-600 text-white' },
       ]
     : [
-        { mode: 'my-schedule', label: 'ตารางตัวเอง', active: 'bg-indigo-600 text-white' },
-        { mode: 'all-vtubers', label: 'VTuber รวม', active: 'bg-purple-600 text-white' },
-        { mode: 'specific-vtuber', label: 'เลือกเจาะจง', active: 'bg-pink-600 text-white' },
+        { mode: 'my-schedule', label: 'My Tasks', active: 'bg-indigo-600 text-white' },
+        { mode: 'all-vtubers', label: 'All VTubers', active: 'bg-purple-600 text-white' },
+        { mode: 'specific-vtuber', label: 'Select VTuber', active: 'bg-pink-600 text-white' },
       ]
 
   return (

@@ -1,8 +1,8 @@
 import { Loader2, Plus, Trash2, X } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { getCommissionFinancials } from '../../lib/financeUtils'
 
-export default function CalendarEventFormModal({
+const CalendarEventFormModal = memo(function CalendarEventFormModal({
   date,
   talents,
   teamMembers,
@@ -17,11 +17,19 @@ export default function CalendarEventFormModal({
   const [commission, setCommission] = useState({ title: '', revenue: 0, startDate: date, endDate: date, description: '', talentId: '' })
   const [partners, setPartners] = useState([])
   const [partnerSelect, setPartnerSelect] = useState('')
-  const firstTalentId = talents[0]?.id ? String(talents[0].id) : ''
+  const firstTalentId = useMemo(() => talents[0]?.id ? String(talents[0].id) : '', [talents])
   const [stream, setStream] = useState({ title: '', talentId: firstTalentId, startTime: '20:00', needsThumbnail: true, platform: 'YouTube' })
   const [clip, setClip] = useState({ title: '', talentId: firstTalentId, format: 'Short', needsScript: true, needsThumbnail: true })
 
-  const financials = getCommissionFinancials({ revenue: commission.revenue, partners })
+  const financials = useMemo(
+    () => getCommissionFinancials({ revenue: commission.revenue, partners }),
+    [commission.revenue, partners]
+  )
+
+  const availableTeamMembers = useMemo(
+    () => teamMembers.filter(member => member.id !== currentUserId && !partners.some(partner => partner.userId === member.id)),
+    [teamMembers, currentUserId, partners]
+  )
 
   const handleAddPartner = () => {
     if (!partnerSelect) return
@@ -100,11 +108,9 @@ export default function CalendarEventFormModal({
                   <select value={partnerSelect} onChange={event => setPartnerSelect(event.target.value)}
                     className="flex-1 bg-[#15151f] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none">
                     <option value="">-- เลือกทีมงาน --</option>
-                    {teamMembers
-                      .filter(member => member.id !== currentUserId && !partners.some(partner => partner.userId === member.id))
-                      .map(member => (
-                        <option key={member.id} value={`${member.id}|${member.display_name}`}>{member.display_name}</option>
-                      ))}
+                    {availableTeamMembers.map(member => (
+                      <option key={member.id} value={`${member.id}|${member.display_name}`}>{member.display_name}</option>
+                    ))}
                   </select>
                   <button type="button" onClick={handleAddPartner}
                     className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1 text-xs transition-colors">
@@ -186,7 +192,7 @@ export default function CalendarEventFormModal({
       </div>
     </div>
   )
-}
+})
 
 function Field({ label, children }) {
   return (
@@ -230,3 +236,5 @@ function Toggle({ label, checked, onChange, plain = false }) {
     </div>
   )
 }
+
+export default CalendarEventFormModal

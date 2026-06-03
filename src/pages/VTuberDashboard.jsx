@@ -686,7 +686,29 @@ export function GoalsTab({
     return currentDay < weekStartDays[weekNum]
   }, [calMonth])
 
-  // เงื่อนไขในการล็อก Milestone ประจำเดือน (จะเปิดเมื่อเข้าสู่เดือนอนาคต หรือถึงสิ้นเดือน)
+  const getWeekRelativeState = useCallback((weekNum) => {
+    const today = new Date()
+    const selYear = calMonth.getFullYear()
+    const selMonth = calMonth.getMonth()
+
+    if (selYear < today.getFullYear()) return 'past'
+    if (selYear > today.getFullYear()) return 'future'
+    if (selMonth < today.getMonth()) return 'past'
+    if (selMonth > today.getMonth()) return 'future'
+
+    const day = today.getDate()
+    if (day < 8) return weekNum === 1 ? 'current' : weekNum < 1 ? 'past' : 'future'
+    if (day < 15) return weekNum === 2 ? 'current' : weekNum < 2 ? 'past' : 'future'
+    if (day < 22) return weekNum === 3 ? 'current' : weekNum < 3 ? 'past' : 'future'
+    if (day < 29) return weekNum === 4 ? 'current' : weekNum < 4 ? 'past' : 'future'
+    return weekNum === 5 ? 'current' : weekNum < 5 ? 'past' : 'future'
+  }, [calMonth])
+
+  const allWeeksAvailable = useMemo(() => {
+    return [1, 2, 3, 4, 5].every(weekNum => !isWeekLocked(weekNum))
+  }, [isWeekLocked])
+
+  // เงื่อนไขในการล็อก Milestone ประจำเดือน (จะเปิดเมื่อทุกสัปดาห์สามารถเข้าดูได้)
   const isMilestoneLocked = useMemo(() => {
     const today = new Date()
     const currentYear = today.getFullYear()
@@ -697,8 +719,9 @@ export function GoalsTab({
 
     if (selYear > currentYear) return true
     if (selYear < currentYear) return false
-    return selMonth > currentMonth
-  }, [calMonth])
+    if (selMonth > currentMonth) return true
+    return !allWeeksAvailable
+  }, [calMonth, allWeeksAvailable])
 
   // ── 7. จัดโครงสร้างข้อมูลเควสประจำแต่ละสัปดาห์ ──
   const weeksData = useMemo(() => {
@@ -761,7 +784,7 @@ export function GoalsTab({
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#0d0d16] border border-white/[0.05] p-4 rounded-2xl shadow-sm">
         <div>
           <h3 className="text-sm font-bold text-slate-200">เป้าหมาย & สถิติรายเดือน</h3>
-          <p className="text-xs text-slate-400">ผลงานและความสำเร็จของคุณประจำเดือน</p>
+          <p className="text-xs text-slate-400">ผลงานและความสำเร็จของคุณในเดือนนี้</p>
         </div>
         
         <div className="flex items-center gap-1.5 bg-[#141420] px-2.5 py-1 rounded-xl border border-white/[0.04]">
@@ -785,14 +808,14 @@ export function GoalsTab({
           <div className="bg-violet-500/10 p-1.5 rounded-lg border border-violet-500/20">
             <Trophy size={14} className="text-violet-400" />
           </div>
-          <h3 className="text-xs font-bold text-slate-200">Stars & ความสำเร็จ</h3>
+          <h3 className="text-xs font-bold text-slate-200">สรุปผลงาน</h3>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           <StatMini
             icon={<Banknote size={16} />}
             value={loadingBilling ? '...' : `${currentMonthBilling.toLocaleString()} บาท`}
-            label="รายรับส่วนแบ่งของคุณ"
+            label="ส่วนแบ่งรายได้ของคุณ"
           />
           <StatMini
             icon={<Clock size={16} />}
@@ -802,12 +825,12 @@ export function GoalsTab({
           <StatMini
             icon={<Film size={16} />}
             value={`${totalShortClips} คลิป`}
-            label="คลิปสั้นที่ทำเสร็จ"
+            label="จำนวนคลิปสั้น"
           />
           <StatMini
             icon={<CheckCircle2 size={16} />}
             value={`${completedQuestsCount} เควส`}
-            label="เควสสำเร็จในเดือนนี้"
+            label="จำนวนเควสที่สำเร็จ"
           />
         </div>
       </div>
@@ -826,7 +849,7 @@ export function GoalsTab({
         </div>
 
         {/* ── 1. เส้นทาง S-curve สำหรับ Desktop (หน้าจอ md ขึ้นไป) ── */}
-        <div className="hidden md:grid grid-cols-3 gap-y-12 gap-x-6 relative py-4">
+        <div className="hidden md:grid grid-cols-3 gap-y-14 gap-x-8 relative py-4">
           {desktopCells.map((cell, idx) => {
             
             // กรณีเป็นโหนดจุดหมาย (Milestone)
@@ -835,7 +858,7 @@ export function GoalsTab({
               const allDone = monthlyCompletionPct === 100 && monthQuests.length > 0
               const isLocked = isMilestoneLocked
               return (
-                <div key="milestone" className="relative">
+                <div key="milestone" className="relative bg-[#13131f] rounded-3xl p-1 shadow-sm border border-white/[0.05]">
                   <button
                     disabled={isLocked}
                     onClick={() => {
@@ -874,19 +897,27 @@ export function GoalsTab({
             const w = cell.data
             const isSelected = selectedWeek === cell.weekNum
             const isLocked = isWeekLocked(cell.weekNum)
+            const weekRelative = getWeekRelativeState(cell.weekNum)
+            const weekBorderOverride = !isLocked
+              ? (weekRelative === 'current'
+                  ? 'border-amber-400/80 hover:border-amber-400/90'
+                  : weekRelative === 'past'
+                    ? 'border-white/70'
+                    : '')
+              : ''
             
             // เลือกสีสันตกแต่งโหนดตามสถานะความเสร็จสมบูรณ์ — Muted Pastel premium styles
             const theme = isLocked 
               ? { border: 'border-white/[0.01] bg-[#0d0d16]/30 opacity-40 cursor-not-allowed', badgeClass: 'bg-[#13131f] text-slate-600 border-white/[0.01]' }
               : {
-                  completed:   { border: 'border-emerald-500/20 hover:border-emerald-500/40 bg-[#0e1614] cursor-pointer', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-                  in_progress: { border: 'border-violet-500/20 hover:border-violet-500/40 bg-violet-600/5 cursor-pointer', badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+                  completed:   { border: 'border-emerald-500/20 hover:border-emerald-500/40 bg-[#13131f] cursor-pointer', badgeClass: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                  in_progress: { border: 'border-violet-500/20 hover:border-violet-500/40 bg-[#13131f] cursor-pointer', badgeClass: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
                   pending:     { border: 'border-white/[0.04] hover:border-white/10 bg-[#13131f] cursor-pointer', badgeClass: 'bg-white/5 text-slate-400 border-white/5' },
-                  none:        { border: 'border-white/[0.02] hover:border-white/5 bg-[#13131f]/50 opacity-60 cursor-pointer', badgeClass: 'bg-white/[0.02] text-slate-500' }
+                  none:        { border: 'border-white/[0.04] hover:border-white/10 bg-[#13131f] cursor-pointer', badgeClass: 'bg-white/5 text-slate-400 border-white/5' }
                 }[w.status]
 
             return (
-              <div key={cell.weekNum} className="relative">
+              <div key={cell.weekNum} className="relative bg-[#13131f] rounded-3xl p-1 shadow-sm border border-white/[0.05]">
                 <button
                   disabled={isLocked}
                   onClick={() => {
@@ -896,7 +927,7 @@ export function GoalsTab({
                   className={`w-full p-4 rounded-xl text-left transition-all duration-200 h-full flex flex-col justify-between border
                     ${isSelected && isWeekModalOpen && !isLocked
                       ? 'bg-violet-600/10 border-violet-500 ring-1 ring-violet-500/30'
-                      : theme.border}`}
+                      : `${theme.border} ${weekBorderOverride}`}`}
                 >
                   <div className="flex items-start justify-between w-full">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${theme.badgeClass}`}>
@@ -991,21 +1022,29 @@ export function GoalsTab({
         </div>
 
         {/* ── 2. เส้นทางแนวตั้งสาหรับหน้าจอ Mobile (ขนาดจอ < md) ── */}
-        <div className="block md:hidden space-y-4">
+        <div className="block md:hidden space-y-5">
           {weeksData.map((w) => {
             const isSelected = selectedWeek === w.weekNum
             const isLocked = isWeekLocked(w.weekNum)
+            const weekRelative = getWeekRelativeState(w.weekNum)
+            const weekBorderOverride = !isLocked
+              ? (weekRelative === 'current'
+                  ? 'border-amber-400/80 hover:border-amber-400/90'
+                  : weekRelative === 'past'
+                    ? 'border-white/70'
+                    : '')
+              : ''
             const theme = isLocked
               ? { border: 'border-white/[0.01] bg-[#0d0d16]/30 opacity-40 cursor-not-allowed', badge: 'bg-[#13131f] text-slate-600 border-white/[0.01]' }
               : {
-                  completed:   { border: 'border-emerald-500/20 bg-[#0e1614]', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-                  in_progress: { border: 'border-violet-500/20 bg-violet-600/5', badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+                  completed:   { border: 'border-emerald-500/20 bg-[#13131f]', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                  in_progress: { border: 'border-violet-500/20 bg-[#13131f]', badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
                   pending:     { border: 'border-white/[0.04] bg-[#13131f]', badge: 'bg-white/5 text-slate-400 border-white/5' },
-                  none:        { border: 'border-white/[0.02] bg-[#13131f]/50 opacity-60', badge: 'bg-white/[0.02] text-slate-500' }
+                  none:        { border: 'border-white/[0.04] bg-[#13131f]', badge: 'bg-white/5 text-slate-400 border-white/5' }
                 }[w.status]
 
             return (
-              <div key={w.weekNum} className="flex flex-col items-center">
+              <div key={w.weekNum} className="flex flex-col items-center bg-[#13131f] rounded-3xl p-1 shadow-sm border border-white/[0.05]">
                 <button
                   disabled={isLocked}
                   onClick={() => {
@@ -1013,7 +1052,7 @@ export function GoalsTab({
                     setIsWeekModalOpen(true)
                   }}
                   className={`w-full p-4 rounded-xl text-left border flex items-center justify-between
-                    ${isSelected && isWeekModalOpen && !isLocked ? 'bg-violet-600/10 border-violet-500' : theme.border}`}
+                    ${isSelected && isWeekModalOpen && !isLocked ? 'bg-violet-600/10 border-violet-500' : `${theme.border} ${weekBorderOverride}`}`}
                 >
                   <div>
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${theme.badge}`}>
@@ -1133,7 +1172,7 @@ export function GoalsTab({
                     </div>
                     <div className="bg-[#13131f] border border-white/[0.04] p-3 rounded-xl">
                       <p className="text-[10px] text-slate-400">อัตราการผ่านเควส</p>
-                      <p className="text-sm font-bold text-white mt-1 text-emerald-400">{monthlyCompletionPct}%</p>
+                      <p className="text-sm font-bold text-emerald-400 mt-1">{monthlyCompletionPct}%</p>
                     </div>
                   </div>
                 </div>

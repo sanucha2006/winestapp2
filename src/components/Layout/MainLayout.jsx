@@ -16,9 +16,9 @@ export default function MainLayout({ children }) {
   }
 
   const getHeaderTitle = () => {
-    if (role === 'admin') return 'Admin Portal (Management)'
-    if (role === 'vtuber') return 'VTuber Dashboard (Talent Hub)'
-    if (role === 'team') return 'Staff Board (Team Hub)'
+    if (role === 'admin') return 'Admin Management'
+    if (role === 'vtuber') return 'VTuber Hun'
+    if (role === 'team') return 'Team Management'
     return 'Agency Dashboard'
   }
 
@@ -40,7 +40,7 @@ export default function MainLayout({ children }) {
               {getHeaderTitle()}
             </h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-1.5 hidden sm:block">
-              WinestApp Agency Management Hub
+              WinestApp Management V.0.2.1 (Demo)
             </p>
           </div>
         </div>

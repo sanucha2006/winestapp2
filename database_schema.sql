@@ -8,7 +8,6 @@
 -- in_review,	รอตรวจ / รออนุมัติ	,commissions, clips
 -- done,	เสร็จสมบูรณ์ / เผยแพร่แล้ว / จ่ายแล้ว	,ทุกตาราง
 -- cancelled,	ยกเลิก	,ทุกตาราง (สำรองไว้)
--- มีการแก้ default เป็น pending แล้ว
 
 create table public.billing_records (
   id serial not null,
