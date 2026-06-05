@@ -150,6 +150,19 @@ create table public.talents (
   constraint talents_user_id_fkey foreign KEY (user_id) references profiles (id)
 ) TABLESPACE pg_default;
 
+CREATE TABLE public.vtuber_availability (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    vtuber_id UUID NOT NULL,                         -- ไอดีของน้อง
+    year SMALLINT NOT NULL,                          -- เก็บปี (เช่น 2026) กินพื้นที่แค่ 2 ไบต์
+    month SMALLINT NOT NULL,                         -- เก็บเดือน (เช่น 6) กินพื้นที่แค่ 2 ไบต์
+    available_days INTEGER[] NOT NULL DEFAULT '{}',  -- อาร์เรย์เก็บวันที่ว่าง [2, 5, 12, 25]
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- ⚠️ ห้ามน้องมีข้อมูลซ้ำใน ปี และ เดือน เดียวกันเด็ดขาด
+    CONSTRAINT unique_vtuber_year_month UNIQUE (vtuber_id, year, month)
+);
+
 -- PROFILES
 create policy "Allow authenticated select profiles"
 on public.profiles

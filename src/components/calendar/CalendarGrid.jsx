@@ -9,6 +9,9 @@ export default function CalendarGrid({
   onSelectDate,
   displayMode = 'preview-list',
   maxPreviewItems = 2,
+  availableDays = [],     // ✨ วันที่ available สำหรับแสดงสีเขียว
+  isEditMode = false,     // ✨ โหมดแก้ไข
+  onToggleDay = null,     // ✨ callback เมื่อคลิกวัน
 }) {
   const calendarDays = getCalendarDays(year, month)
   const todayStr = new Date().toISOString().split('T')[0]
@@ -35,6 +38,9 @@ export default function CalendarGrid({
               onClick={() => onSelectDate(dateStr)}
               displayMode={displayMode}
               maxPreviewItems={maxPreviewItems}
+              availableDays={availableDays}
+              isEditMode={isEditMode}
+              onToggleDay={onToggleDay}
             />
           )
         })}

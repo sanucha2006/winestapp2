@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import Card from '../components/common/Card'
 import MasterCalendar from '../components/calendar/MasterCalendar'
+import TeamAvailabilityViewer from '../components/availability/TeamAvailabilityViewer'
 import { toMonthKey } from '../lib/calendarUtils'
 import { getCommissionFinancials, getStreamFinancials } from '../lib/financeUtils'
 import {
@@ -26,6 +27,7 @@ import {
   updateClipStatus, deleteClip,
   getTalents, getMyProfile, getTeamMembers,
   mapCommission, mapStream, mapClip,
+  getVTuberAvailability,
 } from '../lib/supabaseservice'
 
 // ══════════════════════════════════════════════════════════════
@@ -79,6 +81,14 @@ export default function TeamDashboard() {
   // ── Current calendar month (for fetching) ──
   const [currentDate, setCurrentDate] = useState(new Date())
 
+  // ── Availability cache (VTuber working days) ──
+  const [availabilityCache, setAvailabilityCache] = useState({})
+
+  // ── Filter states & Available days for team calendar ──
+  const [selectedTalentId, setSelectedTalentId] = useState(null)
+  const [filterMode, setFilterMode] = useState('all')
+  const [availableDays, setAvailableDays] = useState([])
+
   // ── Initial load ──
   useEffect(() => {
     if (!user) return
@@ -126,6 +136,53 @@ export default function TeamDashboard() {
     }, 0)
     return () => clearTimeout(timer)
   }, [fetchMonthData])
+
+  // ── Effect: จัดการ cache และดึงวันทำงาน VTuber ──
+  useEffect(() => {
+    // 1. ล้างฟิลเตอร์ออก หรือไม่ใช่โหมด specific-vtuber -> ล้างวันว่างทันที
+    if (filterMode !== 'specific-vtuber' || !selectedTalentId) {
+      setAvailableDays([])
+      return
+    }
+
+    const fetchAvailability = async () => {
+      // ค้นหา user_id (UUID) จาก talents
+      const targetTalent = talents.find(t => t.id === Number(selectedTalentId))
+      const vtuberUserId = targetTalent?.user_id
+
+      if (!vtuberUserId) {
+        setAvailableDays([])
+        return
+      }
+
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth() + 1
+      const cacheKey = `${vtuberUserId}:${year}-${String(month).padStart(2, '0')}`
+
+      // ตรวจสอบใน Cache ก่อน
+      if (availabilityCache[cacheKey] !== undefined) {
+        setAvailableDays(availabilityCache[cacheKey])
+        return
+      }
+
+      try {
+        const days = await getVTuberAvailability(vtuberUserId, year, month)
+        const sortedDays = (days || []).sort((a, b) => a - b)
+        
+        // บันทึกลง state และ cache
+        setAvailableDays(sortedDays)
+        setAvailabilityCache(prev => ({
+          ...prev,
+          [cacheKey]: sortedDays
+        }))
+      } catch (e) {
+        console.error('Failed to fetch availability in TeamDashboard:', e)
+        setAvailableDays([])
+      }
+    }
+
+    fetchAvailability()
+  }, [filterMode, selectedTalentId, currentDate, talents, availabilityCache, setAvailabilityCache])
 
   // ── Toggle handlers (optimistic update + DB sync) ──
   const handleToggleStreamThumbnail = async (id) => {
@@ -260,9 +317,10 @@ export default function TeamDashboard() {
   // ── Tab Config ──────────────────────────────────────────────
   // เพิ่ม Tab ใหม่ที่นี่ แล้วเพิ่ม renderer ใน JSX ด้านล่าง
   const TABS = [
-    { id: 'calendar', label: 'Master Calendar',  icon: Calendar     },
-    { id: 'vtuber',   label: 'To Do List',          icon: CheckCircle2 },
-    { id: 'team',     label: 'Pipeline & Goals', icon: Layers       },
+    { id: 'calendar',     label: 'Master Calendar',    icon: Calendar     },
+    { id: 'vtuber',       label: 'To Do List',         icon: CheckCircle2 },
+    { id: 'availability', label: 'VTuber วันว่าง',  icon: Video        },
+    { id: 'team',         label: 'Pipeline & Goals',   icon: Layers       },
   ]
 
   if (loading) return (
@@ -324,6 +382,11 @@ export default function TeamDashboard() {
               onUpdateEvent={handleUpdateCalendarEvent}
               onDeleteEvent={handleDeleteCalendarEvent}
               onEndStream={handleEndCalendarStream}
+              filterMode={filterMode}
+              onFilterModeChange={setFilterMode}
+              selectedTalentId={selectedTalentId}
+              onSelectedTalentChange={setSelectedTalentId}
+              availableDays={availableDays}
             />
           )}
           {activeTab === 'vtuber' && (
@@ -338,6 +401,14 @@ export default function TeamDashboard() {
               toggleScript={handleToggleScript}
               advanceTeamTask={handleAdvanceTeamTask}
               onDeleteEvent={handleDeleteCalendarEvent}
+            />
+          )}
+          {activeTab === 'availability' && (
+            <TeamAvailabilityViewer
+              talents={talents}
+              currentDate={currentDate}
+              availabilityCache={availabilityCache}
+              onCacheUpdate={setAvailabilityCache}
             />
           )}
           {activeTab === 'team' && (

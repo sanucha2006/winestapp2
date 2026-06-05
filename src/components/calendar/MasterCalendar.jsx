@@ -43,26 +43,46 @@ export default function MasterCalendar({
   onUpdateEvent,
   onDeleteEvent,
   onEndStream,
+  availableDays = [],     // ✨ วันที่ available สำหรับแสดงสีเขียว
+  isEditMode = false,     // ✨ โหมดแก้ไข
+  onToggleDay = null,     // ✨ callback เมื่อคลิกวัน
+  onStartEdit = null,     // ✨ callback เริ่มแก้ไข
+  onSave = null,          // ✨ callback บันทึก
+  onCancel = null,        // ✨ callback ยกเลิก
+  onMarkAll = null,       // ✨ callback ว่างทุกวัน
+  onMarkNone = null,      // ✨ callback ไม่ว่างเลย
+  savingAvailability = false, // ✨ กำลังบันทึก
+  filterMode: propFilterMode,                  // ✨ [NEW] คุมโหมดฟิลเตอร์จากภายนอก
+  onFilterModeChange,                          // ✨ [NEW] callback เมื่อเปลี่ยนโหมดฟิลเตอร์
+  selectedTalentId: propSelectedTalentId,      // ✨ [NEW] คุม VTuber ที่เลือกจากภายนอก
+  onSelectedTalentChange,                      // ✨ [NEW] callback เมื่อเปลี่ยนตัวเลือก VTuber
 }) {
   const mergedPermissions = { ...DEFAULT_PERMISSIONS, ...permissions }
-  const [filterMode, setFilterMode] = useState(role === 'admin' ? 'all' : 'my-schedule')
-  const [selectedTalentId, setSelectedTalentId] = useState(null)
+  const [localFilterMode, setLocalFilterMode] = useState(role === 'admin' ? 'all' : 'my-schedule')
+  const [localSelectedTalentId, setLocalSelectedTalentId] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [endingStream, setEndingStream] = useState(null)
 
+  const activeFilterMode = propFilterMode ?? localFilterMode
+  const activeSelectedTalentId = propSelectedTalentId ?? localSelectedTalentId
+
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
+  const totalDaysInMonth = useMemo(() => {
+    return new Date(year, month + 1, 0).getDate()
+  }, [year, month])
+
   const normalizedEvents = useMemo(() => normalizeCalendarEvents({ commissions, streams, clips }), [commissions, streams, clips])
-  const effectiveSelectedTalentId = selectedTalentId ?? talents[0]?.id ?? null
+  const effectiveSelectedTalentId = activeSelectedTalentId ?? talents[0]?.id ?? null
   const visibleEvents = useMemo(() => filterCalendarEvents(normalizedEvents, {
     role,
     userId,
-    filterMode,
+    filterMode: activeFilterMode,
     selectedTalentId: effectiveSelectedTalentId,
-  }), [normalizedEvents, role, userId, filterMode, effectiveSelectedTalentId])
+  }), [normalizedEvents, role, userId, activeFilterMode, effectiveSelectedTalentId])
 
   const selectedEvents = useMemo(() => selectedDate ? getEventsForDate(visibleEvents, selectedDate) : [], [visibleEvents, selectedDate])
   const gridDisplayMode = displayMode ?? (role === 'vtuber' ? 'dots' : 'preview-list')
@@ -119,11 +139,18 @@ export default function MasterCalendar({
 
       <CalendarFilters
         role={role}
-        filterMode={filterMode}
-        onFilterModeChange={setFilterMode}
+        filterMode={activeFilterMode}
+        onFilterModeChange={(val) => {
+          if (onFilterModeChange) onFilterModeChange(val)
+          else setLocalFilterMode(val)
+        }}
         talents={talents}
         selectedTalentId={effectiveSelectedTalentId}
-        onSelectedTalentChange={setSelectedTalentId}
+        onSelectedTalentChange={(val) => {
+          const numericId = val ? Number(val) : null
+          if (onSelectedTalentChange) onSelectedTalentChange(numericId)
+          else setLocalSelectedTalentId(numericId)
+        }}
       />
 
       <CalendarGrid
@@ -133,18 +160,92 @@ export default function MasterCalendar({
         selectedDate={selectedDate}
         onSelectDate={handleSelectDate}
         displayMode={gridDisplayMode}
+        availableDays={availableDays}
+        isEditMode={isEditMode}
+        onToggleDay={onToggleDay}
       />
 
-      {gridDisplayMode === 'dots' && (
-        <div className="flex items-center gap-4 mx-3 mb-3 pt-3 border-t border-white/[0.04]">
-          {['stream', 'clip'].map(type => (
-            <div key={type} className="flex items-center gap-1.5 text-[10px] text-slate-500">
-              <span className={`w-2 h-2 rounded-full ${EVENT_TYPE_CONFIG[type].markerClass}`} />
-              {EVENT_TYPE_CONFIG[type].iconLabel}
+      {/* Footer Area */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mx-3 mb-3 pt-3 border-t border-white/[0.04]">
+        
+        {/* Left Side: Legend & Statistics */}
+        <div className="flex flex-wrap items-center gap-3">
+          {gridDisplayMode === 'dots' && (
+            <div className="flex items-center gap-3">
+              {['stream', 'clip'].map(type => (
+                <div key={type} className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                  <span className={`w-2 h-2 rounded-full ${EVENT_TYPE_CONFIG[type].markerClass}`} />
+                  {EVENT_TYPE_CONFIG[type].iconLabel}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {/* Availability statistics for VTuber */}
+          {role === 'vtuber' && (
+            <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-white/[0.02] border border-white/[0.04] px-2.5 py-1 rounded-lg">
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                ว่าง: <strong className="text-emerald-400 font-bold">{availableDays.length}</strong> วัน
+              </span>
+              <span className="text-white/10">|</span>
+              <span>
+                ไม่ว่าง: <strong className="text-slate-200">{totalDaysInMonth - availableDays.length}</strong> วัน
+              </span>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Right Side: VTuber Availability Controls */}
+        {role === 'vtuber' && (
+          <div className="flex items-center gap-1.5 self-end sm:self-auto">
+            {!isEditMode ? (
+              <button
+                type="button"
+                onClick={onStartEdit}
+                className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/20 transition-all hover:shadow-md hover:shadow-emerald-950/20 cursor-pointer"
+              >
+                <Calendar size={11} />
+                แก้ไขวันทำงาน
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={onMarkAll}
+                  className="text-[9px] font-bold px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors cursor-pointer"
+                >
+                  ว่างทุกวัน
+                </button>
+                <button
+                  type="button"
+                  onClick={onMarkNone}
+                  className="text-[9px] font-bold px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors cursor-pointer"
+                >
+                  ไม่ว่างเลย
+                </button>
+                <div className="w-px h-4 bg-white/10 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={savingAvailability}
+                  className="flex items-center gap-1 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {savingAvailability && <Loader2 size={11} className="animate-spin" />}
+                  บันทึก
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {selectedDate && (
         <CalendarEventDetailModal

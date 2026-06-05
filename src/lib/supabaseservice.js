@@ -41,11 +41,11 @@ export async function getMyProfile(userId) {
 export async function getTalents() {
   const { data, error } = await supabase
     .from('talents')
-    .select('id, talent_name')
+    .select('id, user_id, talent_name')
     .eq('is_active', true)
     .order('talent_name')
   if (error) throw error
-  return data // [{ id, talent_name }]
+  return data // [{ id, user_id, talent_name }]
 }
 
 /** ดึงข้อมูล talent ของตัวเองจาก user_id (สำหรับหน้า VTuber)
@@ -500,4 +500,50 @@ export function mapClip(row) {
     needsThumbnail: row.needs_thumbnail,
     thumbnailDone:  row.thumbnail_done,
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 📅 VTUBER AVAILABILITY
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * ดึงข้อมูลวันว่างของ VTuber
+ * @param {string} vtuberUserId - talents.user_id (uuid)
+ * @param {number} year
+ * @param {number} month - 1-12
+ */
+export async function getVTuberAvailability(vtuberUserId, year, month) {
+  const { data, error } = await supabase
+    .from('vtuber_availability')
+    .select('*')
+    .eq('vtuber_id', vtuberUserId)
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle()
+  if (error) throw error
+  return data ? data.available_days : [] // return [] ถ้าไม่มีข้อมูล
+}
+
+/**
+ * บันทึก/อัปเดตวันว่างของ VTuber (UPSERT)
+ * @param {string} vtuberUserId - talents.user_id (uuid)
+ * @param {number} year
+ * @param {number} month - 1-12
+ * @param {number[]} availableDays - เรียงแล้ว เช่น [2, 5, 12, 25]
+ */
+export async function upsertVTuberAvailability(vtuberUserId, year, month, availableDays) {
+  const { error } = await supabase
+    .from('vtuber_availability')
+    .upsert(
+      {
+        vtuber_id:     vtuberUserId,
+        year,
+        month,
+        available_days: availableDays, // INTEGER[] ใน PostgreSQL
+      },
+      {
+        onConflict: 'vtuber_id,year,month', // Composite unique key
+      }
+    )
+  if (error) throw error
 }

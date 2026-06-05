@@ -21,6 +21,8 @@ import {
   submitQuest,
   getTalentStars,
   getTalentBilling,
+  getVTuberAvailability,
+  upsertVTuberAvailability,
 } from '../lib/supabaseservice'
 
 // ══════════════════════════════════════════════════════════════
@@ -107,6 +109,14 @@ export default function VTuberDashboard() {
   const [billingRecords, setBillingRecords] = useState([])  // บันทึกรายการจ่ายเงิน/ส่วนแบ่งของตนเอง
   const [calMonth, setCalMonth] = useState(new Date())      // เดือนที่เลือกอยู่ ณ ปัจจุบันในระบบ
 
+  // ── Availability & Cache states ──
+  const [availabilityCache, setAvailabilityCache] = useState({}) // { "YYYY-MM": [1, 2, ...] }
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [savedDays, setSavedDays] = useState([])
+  const [editingDays, setEditingDays] = useState([])
+  const [savingAvailability, setSavingAvailability] = useState(false)
+  const [loadingAvailability, setLoadingAvailability] = useState(false)
+
   // ── Loading & Errors ──
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
@@ -176,6 +186,92 @@ export default function VTuberDashboard() {
     }, 0)
     return () => clearTimeout(timer)
   }, [talent?.id])
+
+  // ── Effect: โหลดวันทำงานโดยใช้ Frontend Cache ──
+  const monthKey = useMemo(() => {
+    const year = calMonth.getFullYear()
+    const month = calMonth.getMonth() + 1
+    return `${year}-${String(month).padStart(2, '0')}`
+  }, [calMonth])
+
+  useEffect(() => {
+    if (!talent?.user_id) return
+
+    // หากมีข้อมูลใน cache แล้ว ดึงมาใช้ได้เลย
+    if (availabilityCache[monthKey] !== undefined) {
+      setSavedDays(availabilityCache[monthKey])
+      return
+    }
+
+    setLoadingAvailability(true)
+    const [year, monthVal] = monthKey.split('-').map(Number)
+    getVTuberAvailability(talent.user_id, year, monthVal)
+      .then(days => {
+        const sortedDays = (days || []).sort((a, b) => a - b)
+        setSavedDays(sortedDays)
+        setAvailabilityCache(prev => ({ ...prev, [monthKey]: sortedDays }))
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoadingAvailability(false))
+  }, [talent?.user_id, monthKey, availabilityCache])
+
+  // ซิงก์ editingDays กับ savedDays เมื่อมีการโหลดข้อมูลสำเร็จหรือเปลี่ยนเดือน
+  useEffect(() => {
+    setEditingDays(savedDays)
+  }, [savedDays])
+
+  // ── Handlers: จัดการสลับโหมด แก้ไขวันทำงาน และบันทึก/ยกเลิก ──
+  const handleToggleDay = useCallback((day) => {
+    setEditingDays(prev => {
+      if (prev.includes(day)) {
+        return prev.filter(d => d !== day)
+      } else {
+        return [...prev, day].sort((a, b) => a - b)
+      }
+    })
+  }, [])
+
+  const handleStartEdit = useCallback(() => {
+    setEditingDays([...savedDays])
+    setIsEditMode(true)
+  }, [savedDays])
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingDays([...savedDays])
+    setIsEditMode(false)
+  }, [savedDays])
+
+  const handleSaveAvailability = useCallback(async () => {
+    if (!talent?.user_id) return
+    try {
+      setSavingAvailability(true)
+      const year = calMonth.getFullYear()
+      const month = calMonth.getMonth() + 1
+
+      await upsertVTuberAvailability(talent.user_id, year, month, editingDays)
+
+      setSavedDays(editingDays)
+      setAvailabilityCache(prev => ({ ...prev, [monthKey]: editingDays }))
+      setIsEditMode(false)
+      showToast('บันทึกวันทำงานสำเร็จ ✓', true)
+    } catch (e) {
+      showToast(e.message || 'เกิดข้อผิดพลาดในการบันทึกวันทำงาน', false)
+    } finally {
+      setSavingAvailability(false)
+    }
+  }, [talent?.user_id, calMonth, editingDays, monthKey, showToast])
+
+  const handleMarkAllAvailable = useCallback(() => {
+    const year = calMonth.getFullYear()
+    const month = calMonth.getMonth() + 1
+    const totalDays = new Date(year, month, 0).getDate()
+    const allDays = Array.from({ length: totalDays }, (_, i) => i + 1)
+    setEditingDays(allDays)
+  }, [calMonth])
+
+  const handleMarkNoneAvailable = useCallback(() => {
+    setEditingDays([])
+  }, [])
 
   // ── Handler: กดปุ่มส่งเควสไปตรวจสอบเงื่อนไขที่ Database RPC ──
   const handleSubmitQuest = useCallback(async (transactionId) => {
@@ -327,6 +423,16 @@ export default function VTuberDashboard() {
             loadingCalendar={loadingCalendar}
             loadingQuests={loadingQuests}
             onSubmitQuest={handleSubmitQuest}
+            availableDays={isEditMode ? editingDays : savedDays}
+            isEditMode={isEditMode}
+            onToggleDay={handleToggleDay}
+            onStartEdit={handleStartEdit}
+            onSave={handleSaveAvailability}
+            onCancel={handleCancelEdit}
+            onMarkAll={handleMarkAllAvailable}
+            onMarkNone={handleMarkNoneAvailable}
+            savingAvailability={savingAvailability}
+            loadingAvailability={loadingAvailability}
           />
         )}
         {activeTab === 'goals' && (
@@ -353,7 +459,27 @@ export default function VTuberDashboard() {
 // ══════════════════════════════════════════════════════════════
 // 🗓️ TAB 1: OVERVIEW TAB (ภาพรวมปฏิทิน และ รายการเควสประจำเดือน)
 // ══════════════════════════════════════════════════════════════
-function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCalendar, loadingQuests, onSubmitQuest }) {
+function OverviewTab({
+  talent,
+  streams,
+  clips,
+  quests,
+  calMonth,
+  setCalMonth,
+  loadingCalendar,
+  loadingQuests,
+  onSubmitQuest,
+  availableDays,
+  isEditMode,
+  onToggleDay,
+  onStartEdit,
+  onSave,
+  onCancel,
+  onMarkAll,
+  onMarkNone,
+  savingAvailability,
+  loadingAvailability
+}) {
   // แบ่งกลุ่มเควสตามความถี่ (รายวัน, รายสัปดาห์, รายเดือน)
   const questsByFreq = useMemo(() => {
     const groups = { daily: [], weekly: [], monthly: [] }
@@ -372,14 +498,15 @@ function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCal
     <div className="space-y-5">
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 space-y-5">
           <MasterCalendar
             role="vtuber"
+            userId={talent?.user_id}
             currentDate={calMonth}
             onMonthChange={setCalMonth}
             streams={streams}
             clips={clips}
-            loading={loadingCalendar}
+            loading={loadingCalendar || loadingAvailability}
             permissions={{
               canCreate: false,
               canEditStatus: false,
@@ -388,6 +515,15 @@ function OverviewTab({ streams, clips, quests, calMonth, setCalMonth, loadingCal
               canViewFinancials: false,
               canFilterAllTalents: false,
             }}
+            availableDays={availableDays}
+            isEditMode={isEditMode}
+            onToggleDay={onToggleDay}
+            onStartEdit={onStartEdit}
+            onSave={onSave}
+            onCancel={onCancel}
+            onMarkAll={onMarkAll}
+            onMarkNone={onMarkNone}
+            savingAvailability={savingAvailability}
           />
         </div>
 
