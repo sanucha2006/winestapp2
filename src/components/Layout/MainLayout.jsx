@@ -33,14 +33,18 @@ export default function MainLayout({ children }) {
         <div className="flex items-center gap-3">
           {/* Logo with Amethyst gradient and light glow */}
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-900/20">
-            <Sparkles size={16} className="text-white animate-pulse" />
+            <img 
+            src="/winest_logo.png" 
+            alt="WinestApp Logo" 
+            className="w-8 h-8 object-contain rounded-lg shadow-md"
+          />
           </div>
           <div>
             <h2 className="text-white font-bold text-sm sm:text-base tracking-tight leading-none">
               {getHeaderTitle()}
             </h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-1.5 hidden sm:block">
-              WinestApp Management V.0.2.1 (Demo)
+              WinestApp Management V.0.2.2 (Demo)
             </p>
           </div>
         </div>
