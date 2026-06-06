@@ -1,12 +1,31 @@
 import { CheckCircle, X } from 'lucide-react'
 import { useState } from 'react'
 
+/**
+ * แสดง Modal สำหรับสรุปและบันทึกการจบไลฟ์ของ Stream Event
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {Object} props.stream - ข้อมูล Stream Event ที่ต้องการจบไลฟ์
+ * @param {string} props.defaultEndTime - เวลาจบไลฟ์ตั้งต้น รูปแบบ HH:MM
+ * @param {number} [props.defaultRevenue=0] - รายได้ตั้งต้นของไลฟ์
+ * @param {Function} props.onSubmit - callback สำหรับบันทึกข้อมูลจบไลฟ์
+ * @param {Function} props.onClose - callback สำหรับปิด Modal
+ * @returns {React.ReactElement} Modal ฟอร์มสรุปจบไลฟ์
+ */
 export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue = 0, onSubmit, onClose }) {
+  // TODO: Bug Risk - Form State ใช้ defaultEndTime/defaultRevenue เป็น initial state แต่ไม่มี reset เมื่อ stream หรือ props เปลี่ยนระหว่าง Modal ยังเปิดอยู่
   const [endTime, setEndTime] = useState(defaultEndTime)
   const [revenue, setRevenue] = useState(defaultRevenue)
 
+  /**
+   * Submit ข้อมูลเวลาจบไลฟ์และรายได้เพื่ออัปเดต Stream Event
+   *
+   * @param {React.FormEvent<HTMLFormElement>} event - submit event จากฟอร์ม
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อ onSubmit ทำงานเสร็จ
+   */
   const handleSubmit = async (event) => {
     event.preventDefault()
+    // TODO: Bug Risk - ไม่มี loading/disabled state สำหรับป้องกัน Double Submission ระหว่างรอ onSubmit ทำงานเสร็จ
     await onSubmit({
       endTime,
       revenue: Math.max(0, Number(revenue) || 0),

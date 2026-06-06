@@ -1,7 +1,3 @@
-// src/components/availability/VTuberAvailabilityManager.jsx
-// ─────────────────────────────────────────────────────────────
-// Component สำหรับให้ VTuber ลงวันว่างของตัวเองในหน้า VTuberDashboard
-// ─────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo } from 'react'
 import {
   Calendar, CheckCircle2, X, Loader2, Save,
@@ -10,9 +6,29 @@ import {
 import Card from '../common/Card'
 import { getVTuberAvailability, upsertVTuberAvailability } from '../../lib/supabaseservice'
 import { getCalendarDays, THAI_MONTHS } from '../../lib/calendarUtils'
+import AvailabilityCalendarGrid from '../calendar/grid/AvailabilityCalendarGrid'
+import AvailabilityStats from '../calendar/grid/AvailabilityStats'
 
+/**
+ * คอมโพเนนต์จัดการวันว่างสำหรับ VTuber (Self-management)
+ * อนุญาตให้ VTuber ดู แก้ไข และบันทึกวันที่ตัวเองว่างในแต่ละเดือน
+ * รองรับ 2 โหมด: แบบดู (Read-only) และแบบแก้ไข (Edit Mode)
+ * 
+ * TODO: Bug Risk - useEffect ที่ดึงข้อมูล Availability ไม่มี active flag / Cleanup function
+ * หาก Component unmount ก่อน API ตอบกลับ (เช่น ผู้ใช้เปลี่ยนแท็บเร็ว) 
+ * จะเกิด setState หลัง unmount ส่งผลให้เกิด memory leak และ React warning
+ * แนวทางแก้: ใช้ `let active = true` ก่อน async call และ `return () => { active = false }` ใน cleanup
+ * 
+ * TODO: Bug Risk - ฟังก์ชัน handleSave ใช้ setTimeout เพื่อซ่อนข้อความสำเร็จ
+ * หาก Component unmount ก่อน timeout หมด จะเกิด memory leak
+ * ควรเก็บ timeout ref และ clearTimeout ใน useEffect cleanup
+ * 
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.talentId - User ID (UUID) ของ VTuber ที่เข้าสู่ระบบ
+ * @param {Date} props.currentDate - วันที่ปัจจุบันสำหรับใช้คำนวณเดือนและปีที่แสดง
+ * @returns {React.ReactElement} การ์ดปฏิทินวันว่างแบบ Interactive สำหรับ VTuber
+ */
 export default function VTuberAvailabilityManager({ talentId, currentDate }) {
-  // ── State หลัก ──
   const [savedDays, setSavedDays] = useState([])
   const [editingDays, setEditingDays] = useState([])
   const [isEditMode, setIsEditMode] = useState(false)
@@ -22,9 +38,12 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
   const [successMessage, setSuccessMessage] = useState(null)
 
   const year = currentDate.getFullYear()
-  const month = currentDate.getMonth() + 1 // 1-12
+  const month = currentDate.getMonth() + 1
 
-  // ── โหลดข้อมูลวันว่างเมื่อ talentId หรือเดือน/ปี เปลี่ยน ──
+  /**
+   * โหลดข้อมูลวันว่างของ VTuber จาก Supabase เมื่อ talentId หรือเดือน/ปี เปลี่ยนแปลง
+   * พร้อมรีเซ็ต Edit Mode และ editingDays กลับเป็นค่าว่างทุกครั้งที่เดือนเปลี่ยน
+   */
   useEffect(() => {
     if (!talentId) return
 
@@ -33,7 +52,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
         setLoading(true)
         setError(null)
         setSuccessMessage(null)
-        // ✨ ออกจาก Edit Mode และล้างค่า editingDays เมื่อเปลี่ยนเดือน
         setIsEditMode(false)
         setEditingDays([])
 
@@ -49,12 +67,20 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
     loadAvailability()
   }, [talentId, year, month])
 
-  // ── จำนวนวันในเดือน ──
+  /**
+   * คำนวณจำนวนวันทั้งหมดในเดือนปัจจุบัน
+   * @type {number}
+   */
   const totalDaysInMonth = useMemo(() => {
     return new Date(year, month, 0).getDate()
   }, [year, month])
 
-  // ── Click วัน: สลับเข้า/ออกจาก editingDays ──
+  /**
+   * สลับวันที่ในรายการ editingDays (เพิ่มถ้าไม่มี, ลบถ้ามีอยู่แล้ว)
+   * ทำงานเฉพาะในโหมด Edit Mode เท่านั้น
+   * 
+   * @param {number} day - เลขวันที่ที่ต้องการสลับสถานะ (1-31)
+   */
   const handleToggleDay = (day) => {
     if (!isEditMode) return
     setEditingDays(prev => {
@@ -66,50 +92,58 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
     })
   }
 
-  // ── ปุ่มเริ่มแก้ไข: คัดลอก savedDays → editingDays ──
+  /**
+   * เข้าสู่โหมดแก้ไข โดยคัดลอกค่าวันว่างที่บันทึกแล้ว (savedDays) มาใส่ใน editingDays
+   */
   const handleStartEdit = () => {
     setEditingDays([...savedDays])
     setIsEditMode(true)
     setError(null)
   }
 
-  // ── ปุ่ม "ว่างทุกวัน" ──
+  /**
+   * ทำเครื่องหมายทุกวันในเดือนนั้นว่า "ว่าง" ทั้งหมด
+   */
   const handleMarkAllAvailable = () => {
     const allDays = Array.from({ length: totalDaysInMonth }, (_, i) => i + 1)
     setEditingDays(allDays)
   }
 
-  // ── ปุ่ม "ไม่ว่างเลย" ──
+  /**
+   * ล้างวันว่างทั้งหมด (ระบุว่าไม่ว่างทั้งเดือน)
+   */
   const handleMarkNoneAvailable = () => {
     setEditingDays([])
   }
 
-  // ── ปุ่มยกเลิก ──
+  /**
+   * ยกเลิกการแก้ไข และกู้คืนข้อมูลกลับเป็นค่าที่บันทึกไว้ก่อนหน้า (savedDays)
+   */
   const handleCancel = () => {
     setEditingDays([...savedDays])
     setIsEditMode(false)
     setError(null)
   }
 
-  // ── ปุ่มบันทึก ──
+  /**
+   * บันทึกวันว่างที่แก้ไขลงฐานข้อมูลผ่าน Supabase UPSERT
+   * เรียงลำดับวันที่จากน้อยไปมากก่อนส่งเพื่อให้ฐานข้อมูลเก็บข้อมูลเป็นระเบียบ
+   */
   const handleSave = async () => {
     if (!talentId) return
     try {
       setSaving(true)
       setError(null)
 
-      // จัดเรียงตัวเลขจากน้อยไปมาก
       const sortedDays = [...editingDays].sort((a, b) => a - b)
 
-      // บันทึกลงฐานข้อมูล (UPSERT)
       await upsertVTuberAvailability(talentId, year, month, sortedDays)
 
-      // ย้ายค่าไป savedDays และออกจาก edit mode
       setSavedDays(sortedDays)
       setIsEditMode(false)
       setSuccessMessage('บันทึกวันทำงานสำเร็จ ✓')
 
-      // ซ่อนข้อความสำเร็จหลังจาก 3 วินาที
+      // TODO: Bug Risk - setTimeout นี้ไม่มีการ cleanup หาก component unmount ก่อน 3 วินาทีจะเกิด memory leak
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (e) {
       setError(e.message)
@@ -118,7 +152,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
     }
   }
 
-  // ── คำนวณสถิติ ──
   const totalAvailable = editingDays.length
   const totalNotAvailable = totalDaysInMonth - totalAvailable
 
@@ -133,11 +166,10 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
     )
   }
 
-  const calendarDays = getCalendarDays(year, month - 1) // month index 0-11
+  const calendarDays = getCalendarDays(year, month - 1)
 
   return (
     <Card className="p-4">
-      {/* ── Header ── */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.04]">
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
           <Calendar size={16} className="text-emerald-400" />
@@ -148,7 +180,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
         </span>
       </div>
 
-      {/* ── ข้อความสำเร็จ/ข้อผิดพลาด ── */}
       {successMessage && (
         <div className="mb-3 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2">
           <CheckCircle2 size={13} className="text-emerald-400 flex-shrink-0" />
@@ -162,70 +193,21 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
         </div>
       )}
 
-      {/* ── สถิติ ── */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-lg p-3">
-          <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">ว่าง</p>
-          <p className="text-xl font-bold text-emerald-300 mt-1">{totalAvailable}</p>
-          <p className="text-[9px] text-slate-500 mt-0.5">วัน</p>
-        </div>
-        <div className="bg-red-500/10 border border-red-500/25 rounded-lg p-3">
-          <p className="text-[9px] text-red-400 font-bold uppercase tracking-wider">ไม่ว่าง</p>
-          <p className="text-xl font-bold text-red-300 mt-1">{totalNotAvailable}</p>
-          <p className="text-[9px] text-slate-500 mt-0.5">วัน</p>
-        </div>
-        <div className="bg-indigo-500/10 border border-indigo-500/25 rounded-lg p-3">
-          <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider">ทั้งหมด</p>
-          <p className="text-xl font-bold text-indigo-300 mt-1">{totalDaysInMonth}</p>
-          <p className="text-[9px] text-slate-500 mt-0.5">วัน</p>
-        </div>
+      <AvailabilityStats
+        availableCount={totalAvailable}
+        notAvailableCount={totalNotAvailable}
+        totalDaysInMonth={totalDaysInMonth}
+      />
+
+      <div className="mb-4">
+        <AvailabilityCalendarGrid
+          calendarDays={calendarDays}
+          availableDays={editingDays}
+          isEditMode={isEditMode}
+          onToggleDay={isEditMode ? handleToggleDay : undefined}
+        />
       </div>
 
-      {/* ── ปฏิทิน ── */}
-      <div className="bg-[#0f0f17] rounded-lg border border-white/[0.05] p-3 mb-4">
-        {/* Header วันในสัปดาห์ */}
-        <div className="grid grid-cols-7 mb-2 gap-0.5">
-          {['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'].map(day => (
-            <div key={day} className="text-center text-[9px] font-bold text-slate-500 py-1">
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Grid วันต่างๆ */}
-        <div className="grid grid-cols-7 gap-0.5">
-          {calendarDays.map((day, index) => {
-            if (!day) return <div key={`blank-${index}`} className="bg-transparent aspect-square" />
-
-            const isAvailable = editingDays.includes(day)
-
-            return (
-              <button
-                key={day}
-                type="button"
-                disabled={!isEditMode}
-                onClick={() => handleToggleDay(day)}
-                className={`aspect-square flex items-center justify-center rounded-lg border text-xs font-bold transition-all
-                  ${isAvailable
-                    ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-400 ring-1 ring-emerald-500/20'
-                    : 'bg-slate-800/40 border-slate-700/60 text-slate-400'
-                  }
-                  ${isEditMode
-                    ? 'cursor-pointer hover:brightness-110'
-                    : 'cursor-not-allowed opacity-60'
-                  }`}
-              >
-                {day}
-                {isAvailable && isEditMode && (
-                  <div className="absolute w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ── Buttons ── */}
       <div className="space-y-2">
         {!isEditMode ? (
           <button
@@ -237,7 +219,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
           </button>
         ) : (
           <>
-            {/* ปุ่มด้านบนในโหมด Edit */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleMarkAllAvailable}
@@ -255,7 +236,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
               </button>
             </div>
 
-            {/* ปุ่มด้านล่างในโหมด Edit */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleSave}
@@ -277,7 +257,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
         )}
       </div>
 
-      {/* ── หมายเหตุ ── */}
       {isEditMode && (
         <p className="text-[9px] text-slate-500 mt-3 text-center">
           💡 คลิกวันในปฏิทินเพื่อสลับสถานะ (ว่าง/ไม่ว่าง)

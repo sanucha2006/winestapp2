@@ -1,14 +1,17 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
 const AuthContext = createContext(null)
 
-function normalizeRole(role) {
-  if (role === 'talent') return 'vtuber'
-  if (role === 'staff') return 'team'
-  return role
-}
-
+/**
+ * Component Provider สำหรับระบบยืนยันตัวตนและการเข้าสู่ระบบ (Authentication & Authorization)
+ * ทำหน้าที่ฟังเหตุการณ์การเปลี่ยนสถานะการเข้าสู่ระบบผ่าน Supabase, การดึงบทบาทของผู้ใช้ (Role Fetching) 
+ * และเผยแพร่ข้อมูลผู้ใช้งาน (user, session, role, loading) ไปยัง Component อื่นๆ
+ * 
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {React.ReactNode} props.children - Component ลูกที่ต้องการเข้าถึงสิทธิ์การยืนยันตัวตน
+ * @returns {React.ReactElement} Provider Component ของสิทธิ์ผู้ใช้
+ */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
@@ -17,8 +20,14 @@ export function AuthProvider({ children }) {
   const [profileLoading, setProfileLoading] = useState(false)
   const [authError, setAuthError] = useState(null)
 
-  // Helper to fetch user role
-  const fetchUserRole = async (userId) => {
+  /**
+   * ดึงข้อมูลบทบาทผู้ใช้ (Role) จากตาราง profiles ในฐานข้อมูล
+   * ห่อหุ้มด้วย useCallback เพื่อให้สามารถนำไปใช้ใน useEffect ได้อย่างปลอดภัยโดยไม่สร้างฟังก์ชันใหม่ซ้ำ ๆ
+   * 
+   * @param {string} userId - ไอดีผู้ใช้จากระบบ Auth (UUID)
+   * @returns {Promise<string|null>} บทบาทของผู้ใช้งาน หรือ null หากไม่พบ
+   */
+  const fetchUserRole = useCallback(async (userId) => {
     console.log('[AuthDebug] fetchUserRole started for:', userId)
     if (!userId) {
       console.log('[AuthDebug] No userId provided to fetchUserRole')
@@ -43,10 +52,9 @@ export function AuthProvider({ children }) {
       }
       
       if (data && data.role) {
-        const normalizedRole = normalizeRole(data.role)
-        console.log('[AuthDebug] Found user role:', data.role, 'Normalized:', normalizedRole)
-        setRole(normalizedRole)
-        return normalizedRole
+        console.log('[AuthDebug] Found user role:', data.role)
+        setRole(data.role)
+        return data.role
       } else {
         throw new Error('User profile or role not found in database.')
       }
@@ -63,7 +71,6 @@ export function AuthProvider({ children }) {
         const errMsg = 'ไม่มีสิทธิ์เข้าใช้งาน: ไม่พบข้อมูลบทบาทผู้ใช้งานในระบบ (Unauthorized: User profile not found)'
         setAuthError(errMsg)
         
-        // Sign out asynchronously so we do not block or interfere with the current state loop
         setTimeout(async () => {
           try {
             await supabase.auth.signOut()
@@ -78,14 +85,12 @@ export function AuthProvider({ children }) {
       console.log('[AuthDebug] fetchUserRole finally block running')
       setProfileLoading(false)
     }
-  }
+  }, [])
 
-  // Effect 1: Handle initial session load and auth state listeners
   useEffect(() => {
     let active = true
     console.log('[AuthDebug] useEffect initial setup running')
 
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!active) return
       console.log('[AuthDebug] getSession resolved. Session user:', session?.user?.email)
@@ -99,7 +104,6 @@ export function AuthProvider({ children }) {
       }
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!active) return
@@ -117,8 +121,6 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  // Effect 2: Fetch user profile role reactively when user state changes
-  // This is completely decoupled from the auth callbacks to avoid Web Lock deadlocks!
   useEffect(() => {
     let active = true
 
@@ -144,8 +146,15 @@ export function AuthProvider({ children }) {
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [user])
+  }, [user, fetchUserRole])
 
+  /**
+   * เข้าสู่ระบบด้วยอีเมลและรหัสผ่าน
+   * 
+   * @param {string} email - อีเมลผู้ใช้
+   * @param {string} password - รหัสผ่านผู้ใช้
+   * @returns {Promise<Object>} ออบเจกต์ผลลัพธ์ { data, error }
+   */
   const signIn = async (email, password) => {
     console.log('[AuthDebug] signIn function called for:', email)
     setAuthError(null)
@@ -165,6 +174,11 @@ export function AuthProvider({ children }) {
     }
   }
 
+  /**
+   * ออกจากระบบและล้างค่าสถานะการเข้าสู่ระบบทั้งหมด
+   * 
+   * @returns {Promise<Object>} ออบเจกต์ผลลัพธ์ที่มีคุณสมบัติ error
+   */
   const signOut = async () => {
     console.log('[AuthDebug] signOut function called')
     try {
@@ -197,6 +211,13 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+/**
+ * Custom Hook สำหรับเรียกใช้ข้อมูลและฟังก์ชันจาก AuthContext
+ * ช่วยให้เข้าถึงข้อมูลผู้ใช้ ล็อกอิน/ล็อกเอาท์ และเช็กสิทธิ์ผ่านคอมโพเนนต์ต่างๆ ได้สะดวก
+ * 
+ * @returns {Object} context ค่าที่ประกอบด้วย { user, session, role, loading, authError, signIn, signOut, setAuthError }
+ * @throws {Error} ถ้าเรียกใช้ Hook นอกพื้นที่ที่ AuthProvider ครอบอยู่
+ */
 export function useAuth() {
   const context = useContext(AuthContext)
   if (!context) {

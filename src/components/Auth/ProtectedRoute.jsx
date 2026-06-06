@@ -1,11 +1,23 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
+/**
+ * คอมโพเนนต์ป้องกันเส้นทาง (Protected Route)
+ * ทำหน้าที่ตรวจสอบสิทธิ์การเข้าถึงหน้าเว็บตามบทบาท (Role) ของผู้ใช้งาน 
+ * หากไม่มีสิทธิ์หรือยังไม่ได้เข้าสู่ระบบ จะ Redirect ผู้ใช้ไปยังหน้าแดชบอร์ดที่เกี่ยวข้องหรือหน้าล็อกอินโดยอัตโนมัติ
+ * 
+ * TODO: Bug Risk - หากอยู่ในช่วงโหลด session เริ่มแรก (loading = true, user = null) เงื่อนไข `if (!user)` 
+ * จะทำงานทันทีและสั่ง Redirect ไปยังหน้า /login ก่อนที่ระบบจะตรวจสอบ session เสร็จ 
+ * ส่งผลให้ผู้ใช้ถูกเตะออกจากระบบชั่วคราว แม้จะล็อกอินค้างไว้
+ * 
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {React.ReactNode} props.children - คอมโพเนนต์ภายในที่ต้องการจำกัดสิทธิ์เข้าใช้งาน
+ * @param {string[]} [props.allowedRoles] - รายการบทบาทที่อนุญาตให้เข้าใช้งานได้ (เช่น ['admin', 'vtuber', 'team'])
+ * @returns {React.ReactElement} คอมโพเนนต์ย่อย หรือหน้า Redirect ไปยังล็อกอิน/แดชบอร์ด
+ */
 export default function ProtectedRoute({ children, allowedRoles }) {
   const { user, role, loading } = useAuth()
 
-  // Only show the loading spinner if a user is logged in, but we are still waiting for their role to load.
-  // If there is no user at all, we don't show the full spinner and let the redirect logic handle it.
   if (loading && user) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -19,17 +31,14 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     )
   }
 
-  // If loading is complete and there's no user, redirect to login
   if (!user && !loading) {
     return <Navigate to="/login" replace />
   }
 
-  // Fallback: If not logged in (even if loading is true, to prevent any locked state)
   if (!user) {
     return <Navigate to="/login" replace />
   }
 
-  // If roles are specified and user's role is not allowed
   if (allowedRoles && !allowedRoles.includes(role)) {
     if (role === 'admin') {
       return <Navigate to="/admin-dashboard" replace />

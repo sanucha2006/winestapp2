@@ -1,5 +1,22 @@
-import { EVENT_TYPE_CONFIG, getEventsForDate } from '../../lib/calendarUtils'
+import { EVENT_TYPE_CONFIG, getEventsForDate } from '../../../lib/calendarUtils'
 
+/**
+ * แสดงช่องวันที่หนึ่งช่องใน Calendar Grid พร้อมสถานะวันนี้ วันที่เลือก วันว่าง และรายการ Event แบบย่อ
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {number} props.day - เลขวันที่ในเดือนที่ต้องการแสดง
+ * @param {string} props.dateStr - วันที่รูปแบบ YYYY-MM-DD สำหรับใช้ค้นหา Event และตรวจสถานะวันที่เลือก
+ * @param {Array<Object>} props.events - รายการ Event ทั้งหมดที่ส่งมาจาก Calendar Grid
+ * @param {boolean} props.isToday - ระบุว่าช่องนี้เป็นวันที่ปัจจุบันหรือไม่
+ * @param {boolean} props.isSelected - ระบุว่าช่องนี้เป็นวันที่ผู้ใช้เลือกอยู่หรือไม่
+ * @param {Function} props.onClick - callback เมื่อคลิกช่องวันที่ในโหมดปกติ
+ * @param {'preview-list'|'dots'} [props.displayMode='preview-list'] - โหมดการแสดง Event ภายในช่องวันที่
+ * @param {number} [props.maxPreviewItems=2] - จำนวน Event สูงสุดที่แสดงในโหมด preview-list
+ * @param {number[]} [props.availableDays=[]] - รายการเลขวันที่ที่ VTuber สามารถทำงานได้
+ * @param {boolean} [props.isEditMode=false] - ระบุว่าอยู่ในโหมดแก้ไขวันว่างหรือไม่
+ * @param {Function|null} [props.onToggleDay=null] - callback เมื่อคลิกสลับสถานะวันว่างในโหมดแก้ไข
+ * @returns {React.ReactElement} ช่องวันที่สำหรับ Calendar Grid พร้อม Event preview หรือ dot indicators
+ */
 export default function CalendarDayCell({
   day,
   dateStr,
@@ -13,6 +30,7 @@ export default function CalendarDayCell({
   isEditMode = false,     // ✨ โหมดแก้ไข - รับการคลิก
   onToggleDay = null,     // ✨ callback เมื่อคลิกวัน (edit mode)
 }) {
+  // TODO: Bug Risk - ปรับปรุง performance โดยใช้ useMemo เพราะ getEventsForDate filter events ใน Render Body ของทุก CalendarDayCell
   const dayEvents = getEventsForDate(events, dateStr)
   const isAvailable = availableDays.includes(day) // ✨ วันนี้ว่างไหม
 
@@ -24,6 +42,7 @@ export default function CalendarDayCell({
     : 'bg-white/5 border-white/[0.05]'
 
   if (displayMode === 'dots') {
+    // TODO: Bug Risk - ปรับปรุง performance โดยใช้ useMemo เพราะมีการ map และสร้าง Set จาก dayEvents ใน Render Body
     const eventTypes = [...new Set(dayEvents.map(event => event.type))]
     return (
       <button

@@ -1,9 +1,25 @@
 import { memo, useMemo } from 'react'
 import { Calendar, CheckCircle, Clock, Film, Plus, Trash2, Tv2, X } from 'lucide-react'
-import StatusBadge from '../common/StatusBadge'
-import { EVENT_TYPE_CONFIG, formatThaiDate, formatTime } from '../../lib/calendarUtils'
-import { getCommissionFinancials, getStreamFinancials } from '../../lib/financeUtils'
+import StatusBadge from '../../common/StatusBadge'
+import { EVENT_TYPE_CONFIG, formatThaiDate, formatTime } from '../../../lib/calendarUtils'
+import { getCommissionFinancials, getStreamFinancials } from '../../../lib/financeUtils'
 
+/**
+ * แสดง Modal รายละเอียด Event ของวันที่เลือก พร้อมแยกกลุ่มตามประเภทงาน
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.date - วันที่ที่กำลังแสดงรายละเอียด รูปแบบ YYYY-MM-DD
+ * @param {Array<Object>} props.events - รายการ Event ของวันที่เลือก
+ * @param {'admin'|'team'|'vtuber'} props.role - Role ของผู้ใช้งานปัจจุบัน
+ * @param {Object} props.permissions - สิทธิ์สำหรับสร้าง แก้ไข ลบ และดูข้อมูลการเงิน
+ * @param {Object|null} props.myProfile - โปรไฟล์ของผู้ใช้ที่ login อยู่
+ * @param {Function} props.onClose - callback สำหรับปิด Modal
+ * @param {Function} props.onCreateClick - callback สำหรับเปิดฟอร์มสร้าง Event ใหม่
+ * @param {Function} props.onUpdateEvent - callback สำหรับอัปเดต Event
+ * @param {Function} props.onDeleteEvent - callback สำหรับลบ Event
+ * @param {Function} props.onEndStreamClick - callback สำหรับเปิด Modal จบไลฟ์
+ * @returns {React.ReactElement} Modal รายละเอียด Event ของวันที่เลือก
+ */
 function CalendarEventDetailModal({
   date,
   events,
@@ -50,6 +66,7 @@ function CalendarEventDetailModal({
               {grouped.commission.length > 0 && (
                 <Section title={`Commission (${grouped.commission.length})`} icon={CheckCircle} color="text-indigo-400">
                   {grouped.commission.map(event => (
+                    // TODO: Bug Risk - พิจารณาการทำ Context API แทน Prop Drilling เพราะ Modal ส่ง permissions/callbacks ต่อหลายชั้นไปยัง Card และ ActionGroup
                     <CommissionEventCard
                       key={event.id}
                       event={event}
@@ -106,6 +123,16 @@ function CalendarEventDetailModal({
   )
 }
 
+/**
+ * แสดงหัวข้อ Section ของกลุ่ม Event พร้อม icon และ children
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.title - ชื่อ Section ที่ต้องการแสดง
+ * @param {React.ComponentType} props.icon - icon component จาก lucide-react
+ * @param {string} props.color - class สีของหัวข้อ Section
+ * @param {React.ReactNode} props.children - เนื้อหาภายใน Section
+ * @returns {React.ReactElement} Section สำหรับจัดกลุ่ม Event
+ */
 function Section({ title, icon: Icon, color, children }) {
   return (
     <div className="space-y-2">
@@ -117,6 +144,17 @@ function Section({ title, icon: Icon, color, children }) {
   )
 }
 
+/**
+ * แสดงการ์ดรายละเอียด Commission Event พร้อมข้อมูลการเงินและปุ่ม action
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {Object} props.event - ข้อมูล Commission Event
+ * @param {Object} props.permissions - สิทธิ์สำหรับแก้ไขสถานะ ลบ และดูข้อมูลการเงิน
+ * @param {Object|null} props.myProfile - โปรไฟล์ผู้ใช้ปัจจุบันสำหรับแสดงชื่อเจ้าของส่วนแบ่ง
+ * @param {Function} props.onUpdateEvent - callback สำหรับอัปเดต Event
+ * @param {Function} props.onDeleteEvent - callback สำหรับลบ Event
+ * @returns {React.ReactElement} การ์ด Commission Event
+ */
 function CommissionEventCard({ event, permissions, myProfile, onUpdateEvent, onDeleteEvent }) {
   const cfg = EVENT_TYPE_CONFIG.commission
   const financials = getCommissionFinancials(event)
@@ -157,6 +195,18 @@ function CommissionEventCard({ event, permissions, myProfile, onUpdateEvent, onD
   )
 }
 
+/**
+ * แสดงการ์ดรายละเอียด Stream Event พร้อมสถานะงาน ปก และข้อมูลการเงิน
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {Object} props.event - ข้อมูล Stream Event
+ * @param {'admin'|'team'|'vtuber'} props.role - Role ของผู้ใช้งานปัจจุบัน
+ * @param {Object} props.permissions - สิทธิ์สำหรับแก้ไขสถานะ ลบ จบไลฟ์ และดูข้อมูลการเงิน
+ * @param {Function} props.onUpdateEvent - callback สำหรับอัปเดต Event
+ * @param {Function} props.onDeleteEvent - callback สำหรับลบ Event
+ * @param {Function} props.onEndStreamClick - callback สำหรับเปิด Modal จบไลฟ์
+ * @returns {React.ReactElement} การ์ด Stream Event
+ */
 function StreamEventCard({ event, role, permissions, onUpdateEvent, onDeleteEvent, onEndStreamClick }) {
   const cfg = EVENT_TYPE_CONFIG.stream
   const isDone = event.status === 'done'
@@ -209,6 +259,17 @@ function StreamEventCard({ event, role, permissions, onUpdateEvent, onDeleteEven
   )
 }
 
+/**
+ * แสดงการ์ดรายละเอียด Clip Event พร้อมสถานะสคริปต์และภาพปก
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {Object} props.event - ข้อมูล Clip Event
+ * @param {'admin'|'team'|'vtuber'} props.role - Role ของผู้ใช้งานปัจจุบัน
+ * @param {Object} props.permissions - สิทธิ์สำหรับแก้ไขสถานะและลบ Event
+ * @param {Function} props.onUpdateEvent - callback สำหรับอัปเดต Event
+ * @param {Function} props.onDeleteEvent - callback สำหรับลบ Event
+ * @returns {React.ReactElement} การ์ด Clip Event
+ */
 function ClipEventCard({ event, role, permissions, onUpdateEvent, onDeleteEvent }) {
   const cfg = EVENT_TYPE_CONFIG.clip
   const isDone = event.status === 'done'
@@ -254,6 +315,17 @@ function ClipEventCard({ event, role, permissions, onUpdateEvent, onDeleteEvent 
   )
 }
 
+/**
+ * แสดงชุดปุ่ม action สำหรับเปลี่ยนสถานะหรือลบ Event
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {Object} props.event - ข้อมูล Event ที่ใช้ตรวจสถานะปัจจุบัน
+ * @param {Object} props.permissions - สิทธิ์สำหรับแก้ไขสถานะและลบ Event
+ * @param {string} props.doneLabel - ข้อความบนปุ่มเปลี่ยนสถานะเป็นเสร็จสิ้น
+ * @param {Function} props.onDone - callback เมื่อกดปุ่มเสร็จสิ้น
+ * @param {Function} props.onDelete - callback เมื่อกดปุ่มลบ
+ * @returns {React.ReactElement|null} ชุดปุ่ม action หรือ null หากไม่มีสิทธิ์
+ */
 function ActionGroup({ event, permissions, doneLabel, onDone, onDelete }) {
   if (!permissions.canEditStatus && !permissions.canDelete) return null
 
@@ -271,6 +343,15 @@ function ActionGroup({ event, permissions, doneLabel, onDone, onDelete }) {
   )
 }
 
+/**
+ * แสดงกล่องตัวเลขเงินพร้อม label และสีที่กำหนด
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.label - ชื่อรายการเงิน
+ * @param {number} props.value - จำนวนเงินที่ต้องการแสดง
+ * @param {string} props.color - class สีของตัวเลขเงิน
+ * @returns {React.ReactElement} กล่องแสดงจำนวนเงิน
+ */
 function MoneyBox({ label, value, color }) {
   return (
     <div className="bg-[#1e1e2e] p-2 rounded-lg border border-slate-700">
@@ -280,6 +361,17 @@ function MoneyBox({ label, value, color }) {
   )
 }
 
+/**
+ * แสดงแถวสถานะ checklist พร้อมปุ่ม action เมื่อยังไม่เสร็จ
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.label - ข้อความสถานะที่ต้องการแสดง
+ * @param {boolean} props.done - ระบุว่างานย่อยเสร็จแล้วหรือไม่
+ * @param {string} props.actionLabel - ข้อความบนปุ่ม action
+ * @param {boolean} props.canAct - ระบุว่าผู้ใช้มีสิทธิ์กด action หรือไม่
+ * @param {Function} props.onClick - callback เมื่อกดปุ่ม action
+ * @returns {React.ReactElement} แถว checklist สำหรับงานย่อยของ Event
+ */
 function CheckRow({ label, done, actionLabel, canAct, onClick }) {
   return (
     <div className="flex items-center justify-between bg-[#1e1e2e] p-2 rounded-lg border border-slate-700 text-xs">

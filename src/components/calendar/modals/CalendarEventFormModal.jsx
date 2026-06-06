@@ -1,7 +1,22 @@
 import { Loader2, Plus, Trash2, X } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
-import { getCommissionFinancials } from '../../lib/financeUtils'
+import { getCommissionFinancials } from '../../../lib/financeUtils'
 
+/**
+ * แสดง Modal ฟอร์มสร้าง Event ใหม่สำหรับ commission, stream, และ clip
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.date - วันที่ตั้งต้นของ Event รูปแบบ YYYY-MM-DD
+ * @param {Array<Object>} props.talents - รายการ VTuber สำหรับเลือกในฟอร์ม
+ * @param {Array<Object>} props.teamMembers - รายการสมาชิกทีมสำหรับแบ่งรายได้ commission
+ * @param {string} props.currentUserId - User ID ของผู้ใช้ปัจจุบัน
+ * @param {Object|null} props.myProfile - โปรไฟล์ของผู้ใช้ปัจจุบัน
+ * @param {string[]} [props.allowedTypes=['commission','stream','clip']] - ประเภท Event ที่อนุญาตให้สร้าง
+ * @param {boolean} [props.saving=false] - สถานะกำลังบันทึกข้อมูล ใช้ปิดปุ่ม submit
+ * @param {Function} props.onSubmit - callback สำหรับ submit ข้อมูล รับประเภทงานและ payload
+ * @param {Function} props.onClose - callback สำหรับปิด Modal
+ * @returns {React.ReactElement} Modal ฟอร์มสร้าง Event ใหม่
+ */
 const CalendarEventFormModal = memo(function CalendarEventFormModal({
   date,
   talents,
@@ -13,11 +28,13 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
   onSubmit,
   onClose,
 }) {
+  // TODO: Bug Risk - Form State ใช้ค่า date/allowedTypes เป็น initial state แต่ไม่มี reset เมื่อ props เปลี่ยนระหว่าง Modal ยังเปิดอยู่
   const [taskType, setTaskType] = useState(allowedTypes[0] ?? 'stream')
   const [commission, setCommission] = useState({ title: '', revenue: 0, startDate: date, endDate: date, description: '', talentId: '' })
   const [partners, setPartners] = useState([])
   const [partnerSelect, setPartnerSelect] = useState('')
   const firstTalentId = useMemo(() => talents[0]?.id ? String(talents[0].id) : '', [talents])
+  // TODO: Bug Risk - Form State ใช้ firstTalentId เป็น initial state แต่ไม่มี cleanup/reset เมื่อ talents ถูกโหลดหรือเปลี่ยนหลัง Modal mount
   const [stream, setStream] = useState({ title: '', talentId: firstTalentId, startTime: '20:00', needsThumbnail: true, platform: 'YouTube' })
   const [clip, setClip] = useState({ title: '', talentId: firstTalentId, format: 'Short', needsScript: true, needsThumbnail: true })
 
@@ -31,6 +48,12 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
     [teamMembers, currentUserId, partners]
   )
 
+  /**
+   * เพิ่มสมาชิกทีมลงในรายการแบ่งรายได้ commission หากยังไม่ถูกเลือก
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleAddPartner = () => {
     if (!partnerSelect) return
     const [userId, name] = partnerSelect.split('|')
@@ -39,6 +62,13 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
     setPartnerSelect('')
   }
 
+  /**
+   * อัปเดตจำนวนเงินส่วนแบ่งของสมาชิกทีมโดยไม่ให้ยอดรวมเกิน team pool
+   *
+   * @param {number} index - index ของ partner ที่ต้องการแก้ไข
+   * @param {string|number} newAmount - จำนวนเงินใหม่จาก input
+   * @returns {void} ไม่มีค่า return
+   */
   const handlePartnerAmountChange = (index, newAmount) => {
     let value = Math.max(0, Number(newAmount))
     const otherTotal = partners.reduce((sum, partner, partnerIndex) => partnerIndex !== index ? sum + partner.amount : sum, 0)
@@ -48,8 +78,15 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
     setPartners(updated)
   }
 
+  /**
+   * Submit ฟอร์มสร้าง Event ตามประเภทงานที่เลือก
+   *
+   * @param {React.FormEvent<HTMLFormElement>} event - submit event จากฟอร์ม
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อ onSubmit ทำงานเสร็จ
+   */
   const handleSubmit = async (event) => {
     event.preventDefault()
+    // TODO: Bug Risk - ป้องกัน Double Submission เพิ่มเติมใน handler หาก form ถูก submit ขณะ saving=true จาก keyboard หรือ event ซ้ำ
     const payload = taskType === 'commission'
       ? { ...commission, partners }
       : taskType === 'stream'
@@ -194,6 +231,14 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
   )
 })
 
+/**
+ * แสดง label และพื้นที่สำหรับ field input ภายในฟอร์ม
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.label - ข้อความ label ของ field
+ * @param {React.ReactNode} props.children - input หรือ control ที่ต้องการแสดง
+ * @returns {React.ReactElement} Field wrapper พร้อม label
+ */
 function Field({ label, children }) {
   return (
     <div>
@@ -203,6 +248,16 @@ function Field({ label, children }) {
   )
 }
 
+/**
+ * แสดง select สำหรับเลือก VTuber
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string|number} props.value - ค่า VTuber ที่เลือกอยู่
+ * @param {Array<Object>} props.talents - รายการ VTuber ทั้งหมด
+ * @param {Function} props.onChange - callback เมื่อเปลี่ยนค่า VTuber
+ * @param {boolean} [props.allowEmpty=false] - อนุญาตให้เลือกค่าว่างได้หรือไม่
+ * @returns {React.ReactElement} Select สำหรับเลือก VTuber
+ */
 function TalentSelect({ value, talents, onChange, allowEmpty = false }) {
   return (
     <select required={!allowEmpty} value={value} onChange={event => onChange(event.target.value)}
@@ -214,6 +269,17 @@ function TalentSelect({ value, talents, onChange, allowEmpty = false }) {
   )
 }
 
+/**
+ * แสดง segmented control สำหรับเลือกค่าจากตัวเลือกที่กำหนด
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.value - ค่าที่เลือกอยู่
+ * @param {string[]} props.options - รายการตัวเลือกทั้งหมด
+ * @param {Object} [props.labels={}] - mapping label สำหรับแสดงผลแทนค่า option
+ * @param {'pink'|'purple'} props.color - ชุดสีของปุ่มที่ active
+ * @param {Function} props.onChange - callback เมื่อเลือก option
+ * @returns {React.ReactElement} Segmented control สำหรับเลือกค่า
+ */
 function Segmented({ value, options, labels = {}, color, onChange }) {
   const activeClass = color === 'pink' ? 'bg-pink-600 text-white' : 'bg-purple-600 text-white'
   return (
@@ -228,6 +294,16 @@ function Segmented({ value, options, labels = {}, color, onChange }) {
   )
 }
 
+/**
+ * แสดง toggle checkbox พร้อม label
+ *
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.label - ข้อความ label ของ toggle
+ * @param {boolean} props.checked - สถานะ checked ปัจจุบัน
+ * @param {Function} props.onChange - callback เมื่อเปลี่ยนสถานะ checked
+ * @param {boolean} [props.plain=false] - ระบุว่าจะไม่แสดงกรอบพื้นหลังของ toggle หรือไม่
+ * @returns {React.ReactElement} Toggle checkbox สำหรับค่า boolean
+ */
 function Toggle({ label, checked, onChange, plain = false }) {
   return (
     <div className={`${plain ? '' : 'bg-[#0f0f17] p-3 rounded-xl border border-slate-700'} flex items-center justify-between`}>

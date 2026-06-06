@@ -1,11 +1,11 @@
 import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import Card from '../common/Card'
-import CalendarEventDetailModal from './CalendarEventDetailModal'
-import CalendarEventFormModal from './CalendarEventFormModal'
+import CalendarEventDetailModal from './modals/CalendarEventDetailModal'
+import CalendarEventFormModal from './modals/CalendarEventFormModal'
 import CalendarFilters from './CalendarFilters'
-import CalendarGrid from './CalendarGrid'
-import EndStreamModal from './EndStreamModal'
+import CalendarGrid from './grid/CalendarGrid'
+import EndStreamModal from './modals/EndStreamModal'
 import {
   EVENT_TYPE_CONFIG,
   THAI_MONTHS,
@@ -15,6 +15,7 @@ import {
   normalizeCalendarEvents,
 } from '../../lib/calendarUtils'
 
+/** ค่า Permission เริ่มต้น (ปิดทุกสิทธิ์) ใช้เป็น Fallback เมื่อ Parent ไม่ส่ง permissions มา */
 const DEFAULT_PERMISSIONS = {
   canCreate: false,
   canEditStatus: false,
@@ -24,6 +25,56 @@ const DEFAULT_PERMISSIONS = {
   canFilterAllTalents: false,
 }
 
+/**
+ * คอมโพเนนต์ปฏิทินหลักของระบบ (Master Calendar)
+ * ทำหน้าที่รวม Logic การแสดงผลทั้งหมดเข้าด้วยกัน ได้แก่:
+ * - กรอง/จัดเรียง Event จาก commissions, streams, clips ตาม role และ filterMode
+ * - แสดง Grid ปฏิทินพร้อม Event preview และสีวันว่าง (Availability)
+ * - จัดการ Modal สำหรับดูรายละเอียด, สร้าง Event ใหม่, และจบ Stream
+ * - รองรับ 2 โหมด: VTuber (แก้ไขวันว่าง) และ Admin/Team (จัดการ Event)
+ * 
+ * TODO: Bug Risk - Component นี้รับ Props มากกว่า 20 ตัว (Prop Drilling ระดับสูง)
+ * หากโปรเจกต์เติบโตต่อไป ควรพิจารณาแยก Context หรือ Custom Hook
+ * เพื่อลดความซับซ้อนของ Props Interface ลง
+ * 
+ * TODO: Bug Risk - `effectiveSelectedTalentId` ถูกคำนวณใน Render Body โดยตรง
+ * โดยไม่ wrap ด้วย useMemo → อาจทำให้ `visibleEvents` รีคำนวณโดยไม่จำเป็นทุก render
+ * แนวทางแก้: ย้าย `effectiveSelectedTalentId` เข้า useMemo
+ * 
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {'admin'|'team'|'vtuber'} props.role - Role ของผู้ใช้งานปัจจุบัน
+ * @param {string} props.userId - User ID ของผู้ใช้งาน (UUID จาก Supabase Auth)
+ * @param {Date} props.currentDate - วันที่ปัจจุบัน ใช้คำนวณเดือน/ปีที่แสดงในปฏิทิน
+ * @param {Function} props.onMonthChange - callback เมื่อผู้ใช้กดเปลี่ยนเดือน รับ Date object
+ * @param {Array<Object>} [props.commissions=[]] - รายการ Commission events
+ * @param {Array<Object>} [props.streams=[]] - รายการ Stream events
+ * @param {Array<Object>} [props.clips=[]] - รายการ Clip events
+ * @param {Array<Object>} [props.talents=[]] - รายชื่อ VTuber ทั้งหมดสำหรับ Dropdown filter
+ * @param {Array<Object>} [props.teamMembers=[]] - รายชื่อสมาชิกทีมสำหรับฟอร์มสร้าง Event
+ * @param {Object|null} [props.myProfile=null] - ข้อมูลโปรไฟล์ของผู้ใช้ที่ login อยู่
+ * @param {boolean} [props.loading=false] - สถานะการโหลดข้อมูลจาก Parent
+ * @param {Object} [props.permissions={}] - สิทธิ์การใช้งานต่าง ๆ (canCreate, canDelete, ฯลฯ)
+ * @param {string} [props.displayMode] - โหมดการแสดงผล Grid ('dots' หรือ 'preview-list')
+ * @param {string[]} [props.allowedTypes] - ประเภท Event ที่อนุญาตให้สร้างได้
+ * @param {Function} [props.onCreateEvent] - callback เมื่อสร้าง Event ใหม่
+ * @param {Function} [props.onUpdateEvent] - callback เมื่ออัปเดต Event
+ * @param {Function} [props.onDeleteEvent] - callback เมื่อลบ Event
+ * @param {Function} [props.onEndStream] - callback เมื่อจบ Stream พร้อมข้อมูลรายได้
+ * @param {number[]} [props.availableDays=[]] - รายการวันที่ VTuber ว่าง [1, 5, 12, ...]
+ * @param {boolean} [props.isEditMode=false] - โหมดแก้ไขวันว่าง (เฉพาะ VTuber)
+ * @param {Function|null} [props.onToggleDay=null] - callback เมื่อคลิกสลับวันว่าง
+ * @param {Function|null} [props.onStartEdit=null] - callback เริ่มโหมดแก้ไขวันว่าง
+ * @param {Function|null} [props.onSave=null] - callback บันทึกวันว่าง
+ * @param {Function|null} [props.onCancel=null] - callback ยกเลิกการแก้ไขวันว่าง
+ * @param {Function|null} [props.onMarkAll=null] - callback ทำเครื่องหมายว่างทุกวัน
+ * @param {Function|null} [props.onMarkNone=null] - callback ล้างวันว่างทั้งหมด
+ * @param {boolean} [props.savingAvailability=false] - สถานะกำลังบันทึกวันว่าง
+ * @param {string} [props.filterMode] - โหมดกรอง Event ที่ควบคุมจากภายนอก
+ * @param {Function} [props.onFilterModeChange] - callback เมื่อเปลี่ยนโหมดกรอง
+ * @param {number|null} [props.selectedTalentId] - ID ของ VTuber ที่เลือกสำหรับกรอง (ควบคุมจากภายนอก)
+ * @param {Function} [props.onSelectedTalentChange] - callback เมื่อเปลี่ยน VTuber ที่เลือก
+ * @returns {React.ReactElement} การ์ดปฏิทินหลักพร้อม Grid, Filter, และ Modal ครบชุด
+ */
 export default function MasterCalendar({
   role,
   userId,
@@ -43,50 +94,97 @@ export default function MasterCalendar({
   onUpdateEvent,
   onDeleteEvent,
   onEndStream,
-  availableDays = [],     // ✨ วันที่ available สำหรับแสดงสีเขียว
-  isEditMode = false,     // ✨ โหมดแก้ไข
-  onToggleDay = null,     // ✨ callback เมื่อคลิกวัน
-  onStartEdit = null,     // ✨ callback เริ่มแก้ไข
-  onSave = null,          // ✨ callback บันทึก
-  onCancel = null,        // ✨ callback ยกเลิก
-  onMarkAll = null,       // ✨ callback ว่างทุกวัน
-  onMarkNone = null,      // ✨ callback ไม่ว่างเลย
-  savingAvailability = false, // ✨ กำลังบันทึก
-  filterMode: propFilterMode,                  // ✨ [NEW] คุมโหมดฟิลเตอร์จากภายนอก
-  onFilterModeChange,                          // ✨ [NEW] callback เมื่อเปลี่ยนโหมดฟิลเตอร์
-  selectedTalentId: propSelectedTalentId,      // ✨ [NEW] คุม VTuber ที่เลือกจากภายนอก
-  onSelectedTalentChange,                      // ✨ [NEW] callback เมื่อเปลี่ยนตัวเลือก VTuber
+  availableDays = [],
+  isEditMode = false,
+  onToggleDay = null,
+  onStartEdit = null,
+  onSave = null,
+  onCancel = null,
+  onMarkAll = null,
+  onMarkNone = null,
+  savingAvailability = false,
+  filterMode: propFilterMode,
+  onFilterModeChange,
+  selectedTalentId: propSelectedTalentId,
+  onSelectedTalentChange,
 }) {
   const mergedPermissions = { ...DEFAULT_PERMISSIONS, ...permissions }
+
+  /** State สำหรับ filterMode เมื่อไม่มี Parent ควบคุม (Uncontrolled mode) */
   const [localFilterMode, setLocalFilterMode] = useState(role === 'admin' ? 'all' : 'my-schedule')
+  /** State สำหรับ selectedTalentId เมื่อไม่มี Parent ควบคุม (Uncontrolled mode) */
   const [localSelectedTalentId, setLocalSelectedTalentId] = useState(null)
+  /** วันที่ที่ผู้ใช้คลิกเลือกในปฏิทิน (รูปแบบ 'YYYY-MM-DD') */
   const [selectedDate, setSelectedDate] = useState(null)
+  /** สถานะการเปิด/ปิด Form Modal สร้าง Event */
   const [isFormOpen, setIsFormOpen] = useState(false)
+  /** สถานะกำลังบันทึก Event ใหม่ */
   const [saving, setSaving] = useState(false)
+  /** ข้อมูล Stream ที่กำลังจะจบ (เปิด EndStreamModal) */
   const [endingStream, setEndingStream] = useState(null)
 
+  /** ใช้ค่า filterMode จาก Parent ถ้ามี ไม่งั้นใช้ local state */
   const activeFilterMode = propFilterMode ?? localFilterMode
+  /** ใช้ค่า selectedTalentId จาก Parent ถ้ามี ไม่งั้นใช้ local state */
   const activeSelectedTalentId = propSelectedTalentId ?? localSelectedTalentId
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
+  /**
+   * คำนวณจำนวนวันทั้งหมดในเดือนปัจจุบัน
+   * @type {number}
+   */
   const totalDaysInMonth = useMemo(() => {
     return new Date(year, month + 1, 0).getDate()
   }, [year, month])
 
-  const normalizedEvents = useMemo(() => normalizeCalendarEvents({ commissions, streams, clips }), [commissions, streams, clips])
-  const effectiveSelectedTalentId = activeSelectedTalentId ?? talents[0]?.id ?? null
-  const visibleEvents = useMemo(() => filterCalendarEvents(normalizedEvents, {
-    role,
-    userId,
-    filterMode: activeFilterMode,
-    selectedTalentId: effectiveSelectedTalentId,
-  }), [normalizedEvents, role, userId, activeFilterMode, effectiveSelectedTalentId])
+  /**
+   * Normalize ข้อมูล Events จากทั้ง 3 แหล่ง (commissions, streams, clips)
+   * ให้อยู่ในรูปแบบเดียวกันก่อนนำไปกรอง
+   * @type {Array<Object>}
+   */
+  const normalizedEvents = useMemo(
+    () => normalizeCalendarEvents({ commissions, streams, clips }),
+    [commissions, streams, clips]
+  )
 
-  const selectedEvents = useMemo(() => selectedDate ? getEventsForDate(visibleEvents, selectedDate) : [], [visibleEvents, selectedDate])
+  // TODO: Bug Risk - effectiveSelectedTalentId ถูกคำนวณใน Render Body (ไม่ใช่ใน useMemo)
+  // ทำให้ค่านี้เปลี่ยนทุก render ซึ่งส่งผลให้ visibleEvents รีคำนวณโดยไม่จำเป็น
+  const effectiveSelectedTalentId = activeSelectedTalentId ?? talents[0]?.id ?? null
+
+  /**
+   * กรอง normalizedEvents ตาม role, userId, filterMode และ VTuber ที่เลือก
+   * @type {Array<Object>}
+   */
+  const visibleEvents = useMemo(
+    () => filterCalendarEvents(normalizedEvents, {
+      role,
+      userId,
+      filterMode: activeFilterMode,
+      selectedTalentId: effectiveSelectedTalentId,
+    }),
+    [normalizedEvents, role, userId, activeFilterMode, effectiveSelectedTalentId]
+  )
+
+  /**
+   * กรอง Event เฉพาะวันที่ผู้ใช้เลือก สำหรับแสดงใน CalendarEventDetailModal
+   * @type {Array<Object>}
+   */
+  const selectedEvents = useMemo(
+    () => selectedDate ? getEventsForDate(visibleEvents, selectedDate) : [],
+    [visibleEvents, selectedDate]
+  )
+
+  /** โหมดการแสดงผล Grid: 'dots' สำหรับ VTuber, 'preview-list' สำหรับ Admin/Team */
   const gridDisplayMode = displayMode ?? (role === 'vtuber' ? 'dots' : 'preview-list')
 
+  /**
+   * จัดการการเลือกวันในปฏิทิน
+   * VTuber: toggle (คลิกซ้ำจะยกเลิกการเลือก), Admin/Team: เลือกปกติ
+   * 
+   * @param {string} dateStr - วันที่ที่คลิก รูปแบบ 'YYYY-MM-DD'
+   */
   const handleSelectDate = (dateStr) => {
     if (role === 'vtuber') {
       setSelectedDate(prev => prev === dateStr ? null : dateStr)
@@ -95,8 +193,15 @@ export default function MasterCalendar({
     setSelectedDate(dateStr)
   }
 
+  /** เปิด Form Modal สำหรับสร้าง Event ใหม่ */
   const handleCreateClick = () => setIsFormOpen(true)
 
+  /**
+   * บันทึก Event ใหม่ผ่าน callback onCreateEvent จาก Parent
+   * 
+   * @param {string} type - ประเภท Event ('stream', 'clip', 'commission')
+   * @param {Object} payload - ข้อมูล Event ที่กรอกในฟอร์ม
+   */
   const handleCreateEvent = async (type, payload) => {
     if (!onCreateEvent || !selectedDate) return
     setSaving(true)
@@ -110,6 +215,13 @@ export default function MasterCalendar({
     }
   }
 
+  /**
+   * จบ Stream พร้อมบันทึกเวลาสิ้นสุดและรายได้
+   * 
+   * @param {Object} param - ข้อมูลการจบ Stream
+   * @param {string} param.endTime - เวลาสิ้นสุด (HH:MM)
+   * @param {number} param.revenue - รายได้จาก Stream (บาท)
+   */
   const handleEndStream = async ({ endTime, revenue }) => {
     if (!endingStream || !onEndStream) return
     await onEndStream(endingStream, { endTime, revenue })
@@ -165,10 +277,9 @@ export default function MasterCalendar({
         onToggleDay={onToggleDay}
       />
 
-      {/* Footer Area */}
+      {/* ── Footer: Legend, สถิติวันว่าง, และปุ่มควบคุม Availability ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mx-3 mb-3 pt-3 border-t border-white/[0.04]">
-        
-        {/* Left Side: Legend & Statistics */}
+
         <div className="flex flex-wrap items-center gap-3">
           {gridDisplayMode === 'dots' && (
             <div className="flex items-center gap-3">
@@ -181,7 +292,6 @@ export default function MasterCalendar({
             </div>
           )}
 
-          {/* Availability statistics for VTuber */}
           {role === 'vtuber' && (
             <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-white/[0.02] border border-white/[0.04] px-2.5 py-1 rounded-lg">
               <span className="flex items-center gap-1">
@@ -196,7 +306,6 @@ export default function MasterCalendar({
           )}
         </div>
 
-        {/* Right Side: VTuber Availability Controls */}
         {role === 'vtuber' && (
           <div className="flex items-center gap-1.5 self-end sm:self-auto">
             {!isEditMode ? (

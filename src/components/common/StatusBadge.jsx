@@ -1,5 +1,10 @@
 import { normalizeStatus } from '../../lib/calendarUtils'
 
+/**
+ * แผนผังการตั้งค่าป้ายสถานะ (Status Config Map)
+ * เก็บชื่อป้ายภาษาไทยและชุดคลาส CSS ตามค่าสถานะต่าง ๆ
+ * @type {Object}
+ */
 const STATUS_MAP = {
   pending: {
     label: 'รอดำเนินการ',
@@ -27,6 +32,15 @@ const STATUS_MAP = {
   },
 }
 
+/**
+ * คอมโพเนนต์ป้ายแสดงสถานะ (Status Badge Component)
+ * แสดงป้ายขนาดเล็กพร้อมสีกำกับตามสถานะของงาน คอมมิชชัน บิล หรือเควส เพื่อความชัดเจนในการติดตามความคืบหน้า
+ * 
+ * @param {Object} props - คุณสมบัติที่ส่งเข้ามายัง component
+ * @param {string} props.status - ค่าสถานะที่ต้องการแสดง (เช่น 'pending', 'in_progress', 'done')
+ * @param {string} [props.className] - ชื่อคลาส CSS เพิ่มเติมเพื่อการปรับแต่งสไตล์
+ * @returns {React.ReactElement} ป้ายริบบิ้นสถานะงานแบบ inline
+ */
 export default function StatusBadge({ status, className = '' }) {
   const cfg = STATUS_MAP[normalizeStatus(status)] ?? STATUS_MAP.pending
 

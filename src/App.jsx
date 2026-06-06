@@ -7,12 +7,17 @@ import AdminDashboard from './pages/AdminDashboard'
 import VTuberDashboard from './pages/VTuberDashboard'
 import TeamDashboard from './pages/TeamDashboard'
 
-// Safe dynamic root redirect based on user role
+/**
+ * คอมโพเนนต์ทำหน้าที่ Redirect ผู้ใช้ไปยังหน้าแดชบอร์ดที่ถูกต้องตามบทบาท (Role) ของผู้ใช้แบบไดนามิก
+ * 
+ * TODO: Bug Risk - หาก loading เป็น true แต่ user ยังเป็น null (เช่น อยู่ระหว่างการดึงข้อมูล session เริ่มแรก) 
+ * อาจจะส่งผลให้ระบบ Redirect ไปหน้า /login ทันที ทำให้เกิดอาการหน้าล็อกอินกะพริบก่อนหน้าแดชบอร์ดจะโหลดสำเร็จ
+ * 
+ * @returns {React.ReactElement} คอมโพเนนต์นำทาง (Navigate) หรือ Spinner แสดงสถานะการโหลด
+ */
 function RootRedirect() {
   const { user, role, loading } = useAuth()
 
-  // Only spin if we have a user but are still loading their profile role.
-  // Otherwise, immediately let the unauthenticated check redirect to login.
   if (loading && user) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -33,19 +38,22 @@ function RootRedirect() {
     return <Navigate to="/team-dashboard" replace />
   }
 
-  // Fallback
   return <Navigate to="/login" replace />
 }
 
+/**
+ * คอมโพเนนต์หลักของแอปพลิเคชัน (Root Component)
+ * กำหนดโครงสร้าง Routing ทั้งหมดของระบบ และครอบด้วย AuthProvider เพื่อจัดการข้อมูลผู้ใช้ที่เข้าสู่ระบบ
+ * 
+ * @returns {React.ReactElement} โครงสร้าง Routing ของแอปพลิเคชัน
+ */
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public Route */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Protected Routes by Role */}
           <Route
             path="/admin-dashboard"
             element={
@@ -77,10 +85,7 @@ export default function App() {
             }
           />
 
-          {/* Default root path dynamic redirect */}
           <Route path="/" element={<RootRedirect />} />
-
-          {/* Catch-all: redirect to dynamic root check */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
