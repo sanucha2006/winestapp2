@@ -1,9 +1,31 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'Winest App',
+        short_name: 'Winest',
+        description: 'Winest Progressive Web App',
+        theme_color: '#ffffff',
+        background_color: '#ffffff',
+        display: 'standalone', // แสดงผลแบบเต็มจอ ซ่อนแถบ URL บราวเซอร์
+        icons: [
+          {
+            src: '/winest_logo.png',
+            sizes: '192x192 256x256 384x384 512x512 1024x1024',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      }
+    })
+  ],
   build: {
     rollupOptions: {
       output: {
