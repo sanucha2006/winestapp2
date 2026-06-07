@@ -58,7 +58,7 @@ export default function MainLayout({ children }) {
               {getHeaderTitle()}
             </h2>
             <p className="text-[10px] sm:text-xs text-slate-400 mt-1.5 hidden sm:block">
-              WinestApp Management V.0.2.2 (Demo)
+              WinestApp Management V.1.0.1
             </p>
           </div>
         </div>
