@@ -38,7 +38,7 @@ export default function VTuberChecklistTab({
   onDeleteEvent,
 }) {
   const allCommissions = teamTasks
-  // TODO: Bug Risk - พิจารณา useMemo สำหรับการจัดเรียง/กรองข้อมูล เพราะ filter streams/shorts ใน render body
+  
   const ownStreams = streams.filter(s => s.createdBy === userId)
   const ownShorts = shorts.filter(c => c.createdBy === userId)
 
@@ -66,7 +66,7 @@ export default function VTuberChecklistTab({
                 <p className="text-[11px] text-slate-500">กำหนดส่ง: {t.endDate?.split('-').reverse().join('/') ?? '-'}</p>
                 <div className="mt-2.5 flex gap-1.5 flex-wrap">
                   {t.partners?.map(p => (
-                    // TODO: Bug Risk - key ใช้ p.name ซึ่งอาจซ้ำกันได้ ควรใช้ userId หรือ id ที่เสถียรกว่าเมื่อข้อมูลพร้อม
+                    
                     <span key={p.name} className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">ผู้ช่วย: {p.name}</span>
                   ))}
                 </div>

@@ -28,13 +28,13 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
   onSubmit,
   onClose,
 }) {
-  // TODO: Bug Risk - Form State ใช้ค่า date/allowedTypes เป็น initial state แต่ไม่มี reset เมื่อ props เปลี่ยนระหว่าง Modal ยังเปิดอยู่
+  
   const [taskType, setTaskType] = useState(allowedTypes[0] ?? 'stream')
   const [commission, setCommission] = useState({ title: '', revenue: 0, startDate: date, endDate: date, description: '', talentId: '' })
   const [partners, setPartners] = useState([])
   const [partnerSelect, setPartnerSelect] = useState('')
   const firstTalentId = useMemo(() => talents[0]?.id ? String(talents[0].id) : '', [talents])
-  // TODO: Bug Risk - Form State ใช้ firstTalentId เป็น initial state แต่ไม่มี cleanup/reset เมื่อ talents ถูกโหลดหรือเปลี่ยนหลัง Modal mount
+  
   const [stream, setStream] = useState({ title: '', talentId: firstTalentId, startTime: '20:00', needsThumbnail: true, platform: 'YouTube' })
   const [clip, setClip] = useState({ title: '', talentId: firstTalentId, format: 'Short', needsScript: true, needsThumbnail: true })
 
@@ -86,7 +86,7 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
    */
   const handleSubmit = async (event) => {
     event.preventDefault()
-    // TODO: Bug Risk - ป้องกัน Double Submission เพิ่มเติมใน handler หาก form ถูก submit ขณะ saving=true จาก keyboard หรือ event ซ้ำ
+    
     const payload = taskType === 'commission'
       ? { ...commission, partners }
       : taskType === 'stream'

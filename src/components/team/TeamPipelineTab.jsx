@@ -18,12 +18,12 @@ import { getCommissionFinancials, getStreamFinancials } from '../../lib/financeU
  * @returns {React.ReactElement} แท็บ Pipeline พร้อมการ์ดสรุปรายได้และ Kanban Board
  */
 export default function TeamPipelineTab({ teamTasks, streams, advanceTeamTask }) {
-  // TODO: Bug Risk - พิจารณา useMemo สำหรับการจัดเรียง/กรองข้อมูล เพราะ filter teamTasks หลายรอบใน render body
+  
   const todoTasks     = teamTasks.filter(t => t.status === 'pending')
   const progressTasks = teamTasks.filter(t => t.status === 'in_progress')
   const doneTasks     = teamTasks.filter(t => t.status === 'done')
 
-  // TODO: Bug Risk - พิจารณา useMemo สำหรับการคำนวณข้อมูลสรุปรายได้จาก doneTasks ใน render body
+  
   const commissionFinancials = doneTasks.reduce((total, task) => {
     const financials = getCommissionFinancials(task)
     return {
@@ -33,7 +33,7 @@ export default function TeamPipelineTab({ teamTasks, streams, advanceTeamTask })
     }
   }, { gross: 0, companyShare: 0, teamPool: 0 })
 
-  // TODO: Bug Risk - พิจารณา useMemo สำหรับการคำนวณข้อมูลสรุปรายได้จาก streams ใน render body
+  
   const streamFinancials = streams.reduce((total, stream) => {
     const financials = getStreamFinancials(stream)
     return {

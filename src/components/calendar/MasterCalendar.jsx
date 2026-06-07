@@ -149,7 +149,7 @@ export default function MasterCalendar({
     [commissions, streams, clips]
   )
 
-  // TODO: Bug Risk - effectiveSelectedTalentId ถูกคำนวณใน Render Body (ไม่ใช่ใน useMemo)
+  
   // ทำให้ค่านี้เปลี่ยนทุก render ซึ่งส่งผลให้ visibleEvents รีคำนวณโดยไม่จำเป็น
   const effectiveSelectedTalentId = activeSelectedTalentId ?? talents[0]?.id ?? null
 
@@ -184,6 +184,7 @@ export default function MasterCalendar({
    * VTuber: toggle (คลิกซ้ำจะยกเลิกการเลือก), Admin/Team: เลือกปกติ
    * 
    * @param {string} dateStr - วันที่ที่คลิก รูปแบบ 'YYYY-MM-DD'
+   * @returns {void} ไม่มีค่า return
    */
   const handleSelectDate = (dateStr) => {
     if (role === 'vtuber') {
@@ -193,7 +194,12 @@ export default function MasterCalendar({
     setSelectedDate(dateStr)
   }
 
-  /** เปิด Form Modal สำหรับสร้าง Event ใหม่ */
+  /**
+   * เปิด Form Modal สำหรับสร้าง Event ใหม่
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleCreateClick = () => setIsFormOpen(true)
 
   /**
@@ -201,6 +207,7 @@ export default function MasterCalendar({
    * 
    * @param {string} type - ประเภท Event ('stream', 'clip', 'commission')
    * @param {Object} payload - ข้อมูล Event ที่กรอกในฟอร์ม
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อสร้าง Event และปิด Form Modal เสร็จ
    */
   const handleCreateEvent = async (type, payload) => {
     if (!onCreateEvent || !selectedDate) return
@@ -221,6 +228,7 @@ export default function MasterCalendar({
    * @param {Object} param - ข้อมูลการจบ Stream
    * @param {string} param.endTime - เวลาสิ้นสุด (HH:MM)
    * @param {number} param.revenue - รายได้จาก Stream (บาท)
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อบันทึกการจบ Stream และปิด Modal เสร็จ
    */
   const handleEndStream = async ({ endTime, revenue }) => {
     if (!endingStream || !onEndStream) return
@@ -249,21 +257,23 @@ export default function MasterCalendar({
         </div>
       </div>
 
-      <CalendarFilters
-        role={role}
-        filterMode={activeFilterMode}
-        onFilterModeChange={(val) => {
-          if (onFilterModeChange) onFilterModeChange(val)
-          else setLocalFilterMode(val)
-        }}
-        talents={talents}
-        selectedTalentId={effectiveSelectedTalentId}
-        onSelectedTalentChange={(val) => {
-          const numericId = val ? Number(val) : null
-          if (onSelectedTalentChange) onSelectedTalentChange(numericId)
-          else setLocalSelectedTalentId(numericId)
-        }}
-      />
+      {mergedPermissions.canFilterAllTalents !== false && (
+        <CalendarFilters
+          role={role}
+          filterMode={activeFilterMode}
+          onFilterModeChange={(val) => {
+            if (onFilterModeChange) onFilterModeChange(val)
+            else setLocalFilterMode(val)
+          }}
+          talents={talents}
+          selectedTalentId={effectiveSelectedTalentId}
+          onSelectedTalentChange={(val) => {
+            const numericId = val ? Number(val) : null
+            if (onSelectedTalentChange) onSelectedTalentChange(numericId)
+            else setLocalSelectedTalentId(numericId)
+          }}
+        />
+      )}
 
       <CalendarGrid
         year={year}

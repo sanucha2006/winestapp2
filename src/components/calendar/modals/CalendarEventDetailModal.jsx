@@ -66,7 +66,7 @@ function CalendarEventDetailModal({
               {grouped.commission.length > 0 && (
                 <Section title={`Commission (${grouped.commission.length})`} icon={CheckCircle} color="text-indigo-400">
                   {grouped.commission.map(event => (
-                    // TODO: Bug Risk - พิจารณาการทำ Context API แทน Prop Drilling เพราะ Modal ส่ง permissions/callbacks ต่อหลายชั้นไปยัง Card และ ActionGroup
+                    
                     <CommissionEventCard
                       key={event.id}
                       event={event}

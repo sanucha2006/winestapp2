@@ -30,7 +30,7 @@ export default function CalendarDayCell({
   isEditMode = false,     // ✨ โหมดแก้ไข - รับการคลิก
   onToggleDay = null,     // ✨ callback เมื่อคลิกวัน (edit mode)
 }) {
-  // TODO: Bug Risk - ปรับปรุง performance โดยใช้ useMemo เพราะ getEventsForDate filter events ใน Render Body ของทุก CalendarDayCell
+  
   const dayEvents = getEventsForDate(events, dateStr)
   const isAvailable = availableDays.includes(day) // ✨ วันนี้ว่างไหม
 
@@ -42,7 +42,7 @@ export default function CalendarDayCell({
     : 'bg-white/5 border-white/[0.05]'
 
   if (displayMode === 'dots') {
-    // TODO: Bug Risk - ปรับปรุง performance โดยใช้ useMemo เพราะมีการ map และสร้าง Set จาก dayEvents ใน Render Body
+    
     const eventTypes = [...new Set(dayEvents.map(event => event.type))]
     return (
       <button

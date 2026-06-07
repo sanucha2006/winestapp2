@@ -123,13 +123,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true
+    const currentUserId = user?.id
 
-    if (user) {
-      console.log('[AuthDebug] User state changed. Deferring fetchUserRole...')
+    if (currentUserId) {
+      console.log('[AuthDebug] User ID changed. Deferring fetchUserRole...')
       const timer = setTimeout(async () => {
         if (!active) return
         try {
-          await fetchUserRole(user.id)
+          await fetchUserRole(currentUserId)
         } catch (err) {
           console.error('[AuthDebug] Deferred fetchUserRole threw error:', err)
         }
@@ -146,7 +147,7 @@ export function AuthProvider({ children }) {
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [user, fetchUserRole])
+  }, [user?.id, fetchUserRole])
 
   /**
    * เข้าสู่ระบบด้วยอีเมลและรหัสผ่าน
@@ -177,6 +178,7 @@ export function AuthProvider({ children }) {
   /**
    * ออกจากระบบและล้างค่าสถานะการเข้าสู่ระบบทั้งหมด
    * 
+   * @param {void} ไม่มี parameter
    * @returns {Promise<Object>} ออบเจกต์ผลลัพธ์ที่มีคุณสมบัติ error
    */
   const signOut = async () => {
@@ -215,6 +217,7 @@ export function AuthProvider({ children }) {
  * Custom Hook สำหรับเรียกใช้ข้อมูลและฟังก์ชันจาก AuthContext
  * ช่วยให้เข้าถึงข้อมูลผู้ใช้ ล็อกอิน/ล็อกเอาท์ และเช็กสิทธิ์ผ่านคอมโพเนนต์ต่างๆ ได้สะดวก
  * 
+ * @param {void} ไม่มี parameter
  * @returns {Object} context ค่าที่ประกอบด้วย { user, session, role, loading, authError, signIn, signOut, setAuthError }
  * @throws {Error} ถ้าเรียกใช้ Hook นอกพื้นที่ที่ AuthProvider ครอบอยู่
  */

@@ -54,7 +54,7 @@ export default function OverviewTab({
   savingAvailability,
   loadingAvailability,
 }) {
-  // TODO: Bug Risk - พิจารณาการแยก Props ให้เล็กลง เพราะ OverviewTab รับ props จำนวนมากและส่งต่อหลาย callback ไปยัง MasterCalendar
+  
   // แบ่งกลุ่มเควสตามความถี่ (รายวัน, รายสัปดาห์, รายเดือน)
   const questsByFreq = useMemo(() => {
     const groups = { daily: [], weekly: [], monthly: [] }

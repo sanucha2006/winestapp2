@@ -20,7 +20,7 @@ export default function CalendarFilters({
 }) {
   if (role === 'vtuber') return null
 
-  // TODO: Bug Risk - พิจารณา useMemo เพื่อประสิทธิภาพ เพราะมีการคำนวณตัวเลือกฟิลเตอร์ใน render body ทุกครั้ง
+  
   const modes = role === 'admin'
     ? [
         { mode: 'all', label: 'ทั้งหมด', active: 'bg-indigo-600 text-white' },
@@ -32,7 +32,7 @@ export default function CalendarFilters({
         { mode: 'specific-vtuber', label: 'Select VTuber', active: 'bg-pink-600 text-white' },
       ]
 
-  // TODO: Bug Risk - selectedTalentId อาจค้างเมื่อเปลี่ยน filterMode ออกจาก specific-vtuber เพราะ component นี้ไม่ reset ค่าเอง
+  
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-white/[0.04] bg-[#0d0d14]">
       <div className="flex items-center gap-1 bg-[#161622] p-1 rounded-lg border border-white/[0.06]">

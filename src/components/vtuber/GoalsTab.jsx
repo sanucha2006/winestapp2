@@ -92,7 +92,11 @@ export function GoalsTab({
   const streamHoursText = useMemo(() => {
     const h = Math.floor(totalStreamMinutes / 60)
     const m = totalStreamMinutes % 60
-    return `${h} ชม. ${m} น.`
+    let text = `${h} ชม. ${m} นาที`
+    if (h === 0) text = `${m} นาที`
+    if (m === 0 && h > 0) text = `${h} ชม.`
+    if (totalStreamMinutes === 0) text = `0 ชม.`
+    return text
   }, [totalStreamMinutes])
 
   // ── 3. จำนวนคลิปสั้นที่ทำเสร็จในเดือนนั้นๆ ──

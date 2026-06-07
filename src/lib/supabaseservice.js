@@ -48,6 +48,7 @@ export async function getMyProfile(userId) {
 /**
  * ดึงรายชื่อนักพากย์/วีทูเบอร์ (Talents) ทั้งหมดที่มีสถานะ Active ในระบบ
  * 
+ * @param {void} ไม่มี parameter
  * @returns {Promise<Array<Object>>} รายชื่อวีทูเบอร์ [{ id, user_id, talent_name }]
  */
 export async function getTalents() {
@@ -80,6 +81,7 @@ export async function getMyTalentProfile(userId) {
 /**
  * ดึงสมาชิกทีม (Staff / Talents / Admin) ทั้งหมดในระบบที่มีสถานะเป็น Active
  * 
+ * @param {void} ไม่มี parameter
  * @returns {Promise<Array<Object>>} รายชื่อทีมงานพร้อมบทบาท [{ id, display_name, role }]
  */
 export async function getTeamMembers() {
@@ -212,6 +214,42 @@ export async function deleteCommission(id) {
     .delete()
     .eq('id', id)
   if (error) throw error
+}
+
+/**
+ * [Admin Only] ดึง Commission ทั้งหมดในระบบโดยไม่กรองตาม owner
+ * ใช้สำหรับ Admin Dashboard เพื่อเห็น Commission ของ VTuber ทุกคน
+ *
+ * @param {Object} [options]
+ * @param {string} [options.month] - กรองตามเดือน 'YYYY-MM' (ดู start_date ของ commission)
+ * @returns {Promise<Array<Object>>} รายการ Commission ทั้งหมดพร้อม talent, owner, และ partners
+ */
+export async function getAllCommissions({ month } = {}) {
+  let query = supabase
+    .from('commissions')
+    .select(`
+      *,
+      talents ( id, talent_name ),
+      owner:profiles!commissions_owner_id_fkey ( id, display_name ),
+      commission_partners (
+        id,
+        share_amount,
+        profiles!commission_partners_team_member_id_fkey ( id, display_name )
+      )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (month) {
+    const [year, monthNumber] = month.split('-').map(Number)
+    const start = `${year}-${String(monthNumber).padStart(2, '0')}-01`
+    const nextMonthDate = new Date(year, monthNumber, 1)
+    const end = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`
+    query = query.gte('start_date', start).lt('start_date', end)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -521,6 +559,7 @@ export async function getTalentStars(talentId) {
 /**
  * ดึงรายการรอบบัญชีและการจ่ายเงิน (Billing Records) ทั้งหมดในระบบ
  * 
+ * @param {void} ไม่มี parameter
  * @returns {Promise<Array<Object>>} รายการบัญชีบิลดิ้งพร้อมชื่อ Talent
  */
 export async function getBillingRecords() {

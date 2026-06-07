@@ -44,7 +44,7 @@ export default function CalendarGrid({
           if (!day) return <div key={`blank-${index}`} />
           const dateStr = toDateKey(year, month, day)
           return (
-            // TODO: Bug Risk - พิจารณาการทำ Context API แทน Prop Drilling เพราะ CalendarGrid ส่ง props จำนวนมากต่อไปยัง CalendarDayCell
+            
             <CalendarDayCell
               key={dateStr}
               day={day}

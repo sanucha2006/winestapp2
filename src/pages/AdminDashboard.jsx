@@ -1,204 +1,423 @@
-import { useState } from 'react'
+// src/pages/AdminDashboard.jsx
+// ─────────────────────────────────────────────────────────────
+// หน้า Admin Dashboard หลัก
+// ──────────────────────────────────────────────────────────────
+// CACHING STRATEGY: "Lazy Mount + Keep Alive"
+//   • Section component จะ mount ครั้งแรกเมื่อ Tab ถูกเยือนเท่านั้น
+//   • หลังจากนั้นใช้ CSS `hidden` ซ่อน ไม่ unmount → ไม่ re-fetch
+//   • `refreshKey` counter บังคับ re-fetch ทุก section เมื่อกด Refresh
+// ─────────────────────────────────────────────────────────────
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  TrendingUp,
-  Users,
-  DollarSign,
-  Tv,
-  CheckCircle,
-  Clock,
-  Sparkles,
-  ArrowUpRight,
+  Sparkles, Users, LayoutDashboard, Trophy, Wallet,
+  Loader2, AlertTriangle, RefreshCw,
 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import { toMonthKey } from '../lib/calendarUtils'
+import {
+  getTalents,
+  getTeamMembers,
+  getStreams,
+  getClips,
+  getAllCommissions,
+  mapCommission,
+  mapStream,
+  mapClip,
+  createStream,
+  createClip,
+  createCommission,
+  updateCommissionStatus,
+  deleteCommission,
+  deleteStream,
+  deleteClip,
+  endStream,
+  getMyProfile,
+} from '../lib/supabaseservice'
 
-const initialTalentsData = [
-  { id: 1, name: 'Hoshina Yuki', superchat: 120000, merch: 45000, status: 'Paid' },
-  { id: 2, name: 'Aoi Kuroha', superchat: 95000, merch: 30000, status: 'Paid' },
-  { id: 3, name: 'Sakura Mochi', superchat: 145000, merch: 60000, status: 'Pending' },
-  { id: 4, name: 'Kage Akuma', superchat: 75000, merch: 15830, status: 'Paid' },
+import Toast from '../components/common/Toast'
+import AdminVTuberSection  from '../components/admin/AdminVTuberSection'
+import AdminTeamSection    from '../components/admin/AdminTeamSection'
+import AdminQuestSection   from '../components/admin/AdminQuestSection'
+import AdminFinanceSection from '../components/admin/AdminFinanceSection'
+
+// ── Tab Config ──
+const TABS = [
+  { id: 'vtuber',  label: 'VTuber Dashboard', icon: LayoutDashboard },
+  { id: 'team',    label: 'Team Dashboard',    icon: Users           },
+  { id: 'quests',  label: 'Quest Management',  icon: Trophy          },
+  { id: 'finance', label: 'Finance & Revenue', icon: Wallet          },
 ]
 
+/**
+ * แสดงหน้า Admin Dashboard หลัก พร้อมระบบแท็บแบบ lazy mount, calendar data กลาง, และ section สำหรับดูแล VTuber/Team/Quest/Finance
+ *
+ * @param {void} ไม่มี parameter
+ * @returns {React.ReactElement} หน้า Admin Portal พร้อมแท็บจัดการระบบ
+ */
 export default function AdminDashboard() {
-  const [data, setData] = useState(initialTalentsData)
+  const { user } = useAuth()
 
-  // Calculations
-  const calculateTotal = (type) => {
-    return data.reduce((acc, curr) => acc + curr[type], 0)
+  const [activeTab, setActiveTab] = useState('vtuber')
+  // ชุด Tab ที่ถูก visit แล้ว — ใช้ mount ครั้งเดียว
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['vtuber']))
+
+  // ── Refresh key — increment เพื่อบังคับ refetch ทุก section ──
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // ── Global states ──
+  const [myProfile,    setMyProfile]    = useState(null)
+  const [talents,      setTalents]      = useState([])
+  const [teamMembers,  setTeamMembers]  = useState([])
+  const [commissions,  setCommissions]  = useState([])
+  const [streams,      setStreams]      = useState([])
+  const [clips,        setClips]        = useState([])
+  const [calMonth,     setCalMonth]     = useState(new Date())
+
+  const [loadingInit,     setLoadingInit]     = useState(true)
+  const [loadingCalendar, setLoadingCalendar] = useState(false)
+  const [error,           setError]           = useState(null)
+  const [toast,           setToast]           = useState(null)
+
+  /**
+   * แสดง Toast แจ้งผลลัพธ์ของ action ในหน้า Admin
+   *
+   * @param {string} message - ข้อความที่ต้องการแสดง
+   * @param {boolean} [success=true] - ระบุว่าเป็นข้อความสำเร็จหรือข้อผิดพลาด
+   * @returns {void} ไม่มีค่า return
+   */
+  const showToast = useCallback((message, success = true) => setToast({ message, success }), [])
+
+  /**
+   * เปลี่ยนแท็บและบันทึกว่าแท็บนั้นถูก visit แล้ว เพื่อให้ section mount ครั้งแรกเพียงครั้งเดียว
+   *
+   * @param {string} tabId - id ของแท็บที่ต้องการเปิด
+   * @returns {void} ไม่มีค่า return
+   */
+  const handleTabChange = useCallback((tabId) => {
+    setActiveTab(tabId)
+    setVisitedTabs(prev => {
+      if (prev.has(tabId)) return prev        // ไม่เปลี่ยน reference ถ้ามีแล้ว
+      const next = new Set(prev)
+      next.add(tabId)
+      return next
+    })
+  }, [])
+
+  /**
+   * สั่งรีเฟรชข้อมูลทุก section ผ่าน refreshKey และ loading state ของปุ่ม Refresh
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {Promise<void>} Promise ที่ resolve หลังสั่งเพิ่ม refreshKey
+   */
+  const handleRefreshAll = useCallback(async () => {
+    setIsRefreshing(true)
+    setRefreshKey(k => k + 1)
+    // calendar จะ re-fetch เพราะ refreshKey เป็น dep (ดู useEffect ด้านล่าง)
+    // isRefreshing จะ reset หลัง calendar โหลดเสร็จผ่าน ref
+  }, [])
+
+  // ใช้ ref แยกจาก state เพื่อเช็กว่า calendar effect เริ่มโหลดจริงหรือยัง
+  const calendarLoadingRef = useRef(false)
+  useEffect(() => {
+    if (isRefreshing && !calendarLoadingRef.current) {
+      // calendar effect ยังไม่ trigger → reset ทันที
+      setIsRefreshing(false)
+    }
+  }, [isRefreshing])
+
+  // โหลดข้อมูลพื้นฐานที่ทุก Admin section ใช้ร่วมกัน
+  useEffect(() => {
+    if (!user?.id) return
+    const timer = setTimeout(async () => {
+      setLoadingInit(true)
+      setError(null)
+      try {
+        const [profile, allTalents, allTeam] = await Promise.all([
+          getMyProfile(user.id),
+          getTalents(),
+          getTeamMembers(),
+        ])
+        setMyProfile(profile)
+        setTalents(allTalents)
+        setTeamMembers(allTeam)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoadingInit(false)
+      }
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [user?.id])
+
+  // โหลดข้อมูล Calendar กลางตามเดือนที่เลือกและ refreshKey
+  useEffect(() => {
+    calendarLoadingRef.current = true
+    const timer = setTimeout(async () => {
+      setLoadingCalendar(true)
+      const month = toMonthKey(calMonth)
+      try {
+        const [rawStreams, rawClips, rawComm] = await Promise.all([
+          getStreams({ month }),
+          getClips({ month }),
+          getAllCommissions({ month }),
+        ])
+        setStreams(rawStreams.map(mapStream))
+        setClips(rawClips.map(mapClip))
+        setCommissions(rawComm.map(mapCommission))
+      } catch (e) {
+        showToast('โหลดปฏิทินไม่สำเร็จ: ' + e.message, false)
+      } finally {
+        setLoadingCalendar(false)
+        calendarLoadingRef.current = false
+        setIsRefreshing(false)  // ✅ reset เมื่อ calendar โหลดเสร็จ
+      }
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [calMonth, refreshKey, showToast]) // refreshKey เป็น dep → re-fetch เมื่อกด Refresh
+
+  /**
+   * สร้าง Event ใหม่จาก MasterCalendar แล้วอัปเดต state ฝั่ง client ตามประเภท Event
+   *
+   * @param {'stream'|'clip'|'commission'} type - ประเภท Event ที่ต้องการสร้าง
+   * @param {Object} payload - ข้อมูลฟอร์มที่ส่งมาจาก CalendarEventFormModal
+   * @param {string} date - วันที่ที่เลือกในปฏิทิน รูปแบบ YYYY-MM-DD
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อสร้างและอัปเดต state สำเร็จ
+   */
+  const handleCreateEvent = useCallback(async (type, payload, date) => {
+    try {
+      if (type === 'stream') {
+        const raw = await createStream({ ...payload, streamDate: date, createdBy: user?.id })
+        setStreams(prev => [...prev, mapStream({ ...raw, talents: null })])
+      } else if (type === 'clip') {
+        const raw = await createClip({ ...payload, publishDate: date, createdBy: user?.id })
+        setClips(prev => [...prev, mapClip({ ...raw, talents: null })])
+      } else if (type === 'commission') {
+        const raw = await createCommission({ ...payload, ownerId: payload.createdBy ?? user?.id })
+        setCommissions(prev => [mapCommission({ ...raw, commission_partners: [] }), ...prev])
+      }
+      showToast('เพิ่มรายการสำเร็จ ✓', true)
+    } catch (e) {
+      showToast('เพิ่มรายการไม่สำเร็จ: ' + e.message, false)
+      throw e
+    }
+  }, [user?.id, showToast])
+
+  /**
+   * อัปเดต Event จาก MasterCalendar ตามข้อมูล update ที่ส่งเข้ามา
+   *
+   * @param {Object} event - Event เดิมที่ต้องการอัปเดต
+   * @param {Object} updates - ข้อมูลที่ต้องการเปลี่ยนแปลง
+   * @returns {Promise<void>} Promise ที่ resolve เมื่ออัปเดตเสร็จ
+   */
+  const handleUpdateEvent = useCallback(async (event, updates) => {
+    try {
+      if (event.type === 'commission') {
+        await updateCommissionStatus(event.id, updates.status)
+        setCommissions(prev => prev.map(c => c.id === event.id ? { ...c, status: updates.status } : c))
+      }
+      showToast('อัปเดตสำเร็จ ✓', true)
+    } catch (e) {
+      showToast('อัปเดตไม่สำเร็จ: ' + e.message, false)
+    }
+  }, [showToast])
+
+  /**
+   * ลบ Event ที่เลือกออกจากฐานข้อมูลและ state ฝั่ง client
+   *
+   * @param {Object} event - Event ที่ต้องการลบ พร้อม id และ type
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อลบเสร็จ
+   */
+  const handleDeleteEvent = useCallback(async (event) => {
+    try {
+      if (event.type === 'stream')          { await deleteStream(event.id);     setStreams(prev => prev.filter(s => s.id !== event.id))      }
+      else if (event.type === 'clip')       { await deleteClip(event.id);       setClips(prev => prev.filter(c => c.id !== event.id))        }
+      else if (event.type === 'commission') { await deleteCommission(event.id); setCommissions(prev => prev.filter(c => c.id !== event.id)) }
+      showToast('ลบรายการสำเร็จ ✓', true)
+    } catch (e) {
+      showToast('ลบไม่สำเร็จ: ' + e.message, false)
+    }
+  }, [showToast])
+
+  /**
+   * บันทึกการจบไลฟ์ของ Stream Event และอัปเดต state รายการ stream
+   *
+   * @param {Object} stream - Stream Event ที่ต้องการจบไลฟ์
+   * @param {Object} payload - ข้อมูลสรุปจบไลฟ์
+   * @param {string} payload.endTime - เวลาจบไลฟ์ รูปแบบ HH:MM
+   * @param {number} payload.revenue - รายได้รวมจากไลฟ์
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อบันทึกเสร็จ
+   */
+  const handleEndStream = useCallback(async (stream, { endTime, revenue }) => {
+    try {
+      await endStream(stream.id, { endTime, revenue })
+      setStreams(prev => prev.map(s => s.id === stream.id ? { ...s, status: 'done', endTime, revenue } : s))
+      showToast('บันทึกสิ้นสุด Stream สำเร็จ ✓', true)
+    } catch (e) {
+      showToast('บันทึกไม่สำเร็จ: ' + e.message, false)
+    }
+  }, [showToast])
+
+  // ── Loading Screen ──
+  if (loadingInit) {
+    return (
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="text-violet-400 animate-spin" />
+          <p className="text-sm text-slate-400">กำลังโหลด Admin Portal...</p>
+        </div>
+      </div>
+    )
   }
 
-  const totalSuperchat = calculateTotal('superchat')
-  const totalMerch = calculateTotal('merch')
-  const totalGrossRevenue = totalSuperchat + totalMerch
-  
-  // Splits
-  const agencyRevenue = totalGrossRevenue * 0.60 // 60%
-  const talentRevenue = totalGrossRevenue * 0.40 // 40%
+  // ── Error Screen ──
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center p-4">
+        <div className="bg-rose-950/40 border border-rose-500/20 rounded-2xl p-6 max-w-sm text-center">
+          <AlertTriangle size={32} className="text-rose-400 mx-auto mb-3" />
+          <p className="text-sm text-rose-300 font-medium">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Shared section props ──
+  const calendarProps = {
+    userId:           user?.id,
+    myProfile,
+    commissions,
+    streams,
+    clips,
+    loadingCalendar,
+    calMonth,
+    onMonthChange:    setCalMonth,
+    onCreateEvent:    handleCreateEvent,
+    onUpdateEvent:    handleUpdateEvent,
+    onDeleteEvent:    handleDeleteEvent,
+  }
 
   return (
-    <div className="p-8 animate-in fade-in max-w-7xl mx-auto space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg shadow-violet-900/40">
-            <Sparkles size={20} className="text-white" />
+    <div className="min-h-screen bg-[#050508] text-slate-200 antialiased pb-12">
+      <div className="max-w-6xl mx-auto px-4 pt-6 space-y-5">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between bg-[#0d0d16] border border-white/[0.05] rounded-2xl px-5 py-3.5 shadow-md shadow-violet-950/5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-600/15 border border-violet-500/25 flex items-center justify-center">
+              <Sparkles size={16} className="text-violet-400" />
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-400 font-medium">Admin Portal</p>
+              <p className="text-sm font-bold text-white leading-tight">
+                {myProfile?.display_name ?? 'Administrator'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Admin Portal</h1>
-            <p className="text-gray-400 text-sm">Real-time financials & talent splits overview</p>
+
+          <div className="flex items-center gap-2">
+            {/* ── Refresh All Button ── */}
+            <button
+              id="admin-refresh-btn"
+              onClick={handleRefreshAll}
+              disabled={isRefreshing}
+              title="รีเฟรชข้อมูลทั้งหมด"
+              className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg
+                bg-white/[0.03] hover:bg-violet-500/10 text-slate-400 hover:text-violet-300
+                border border-white/[0.06] hover:border-violet-500/20 transition-all
+                disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <RefreshCw size={11} className={isRefreshing ? 'animate-spin text-violet-400' : ''} />
+              <span className="hidden sm:inline">
+                {isRefreshing ? 'กำลังรีเฟรช...' : 'Refresh'}
+              </span>
+            </button>
+
+            {/* ── VTuber count badge ── */}
+            <div className="flex items-center gap-2 text-[10px] text-slate-500 bg-white/[0.02] border border-white/[0.04] px-3 py-1.5 rounded-lg">
+              <Users size={11} className="text-violet-400" />
+              <span>{talents.length} Active VTubers</span>
+            </div>
           </div>
         </div>
-        
-        {/* Quick Date Indicator */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2 flex items-center gap-2 self-start md:self-auto text-xs text-gray-400">
-          <Clock size={14} className="text-violet-400" />
-          <span>Billing Period: May 2026</span>
+
+        {/* ── Tab Switcher ── */}
+        <div className="flex bg-[#0d0d16] border border-white/[0.05] rounded-xl p-1 shadow-md gap-0.5">
+          {TABS.map(tab => {
+            const Icon = tab.icon
+            const active = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                id={`admin-tab-${tab.id}`}
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 flex-1 justify-center
+                  ${active
+                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-indigo-900/20'
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'}`}
+              >
+                <Icon size={14} className="shrink-0" />
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            )
+          })}
         </div>
+
+        {/* ══════════════════════════════════════════════════════
+            Tab Content — Lazy Mount + Keep Alive
+            • visitedTabs.has(id) → mount เมื่อเยือนครั้งแรก
+            • className="hidden" → ซ่อน แต่ไม่ unmount → ไม่ re-fetch
+        ══════════════════════════════════════════════════════ */}
+
+        {/* Tab 1: VTuber Dashboard */}
+        {visitedTabs.has('vtuber') && (
+          <div className={activeTab === 'vtuber' ? '' : 'hidden'}>
+            <AdminVTuberSection
+              {...calendarProps}
+              talents={talents}
+              teamMembers={teamMembers}
+              onEndStream={handleEndStream}
+              refreshKey={refreshKey}
+            />
+          </div>
+        )}
+
+        {/* Tab 2: Team Dashboard */}
+        {visitedTabs.has('team') && (
+          <div className={activeTab === 'team' ? '' : 'hidden'}>
+            <AdminTeamSection
+              {...calendarProps}
+              teamMembers={teamMembers}
+              talents={talents}
+              refreshKey={refreshKey}
+            />
+          </div>
+        )}
+
+        {/* Tab 3: Quest Management */}
+        {visitedTabs.has('quests') && (
+          <div className={activeTab === 'quests' ? '' : 'hidden'}>
+            <AdminQuestSection
+              talents={talents}
+              showToast={showToast}
+              refreshKey={refreshKey}
+            />
+          </div>
+        )}
+
+        {/* Tab 4: Finance & Revenue */}
+        {visitedTabs.has('finance') && (
+          <div className={activeTab === 'finance' ? '' : 'hidden'}>
+            <AdminFinanceSection
+              showToast={showToast}
+              refreshKey={refreshKey}
+            />
+          </div>
+        )}
+
       </div>
 
-      {/* Financial Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Gross Revenue */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 relative group overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-violet-600/5 rounded-full blur-2xl group-hover:bg-violet-600/10 transition-all duration-200" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-violet-600/15 flex items-center justify-center">
-              <DollarSign size={16} className="text-violet-400" />
-            </div>
-            <span className="text-xs text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-              <ArrowUpRight size={10} /> +12%
-            </span>
-          </div>
-          <p className="text-2xl font-extrabold text-white">฿{totalGrossRevenue.toLocaleString()}</p>
-          <p className="text-gray-500 text-xs mt-1">Total Gross Revenue</p>
-        </div>
-
-        {/* Agency Share (60%) */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 relative group overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-violet-600/5 rounded-full blur-2xl group-hover:bg-violet-600/10 transition-all duration-200" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-violet-600/15 flex items-center justify-center">
-              <TrendingUp size={16} className="text-violet-400" />
-            </div>
-            <span className="text-[10px] text-violet-400 font-bold tracking-wider bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded-full">
-              60% CUT
-            </span>
-          </div>
-          <p className="text-2xl font-extrabold text-violet-400">฿{agencyRevenue.toLocaleString()}</p>
-          <p className="text-gray-500 text-xs mt-1">Net Agency Share</p>
-        </div>
-
-        {/* Talents Share (40%) */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-violet-500/30 transition-all duration-200 relative group overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-600/5 rounded-full blur-2xl group-hover:bg-purple-600/10 transition-all duration-200" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-purple-600/15 flex items-center justify-center">
-              <Users size={16} className="text-purple-400" />
-            </div>
-            <span className="text-[10px] text-purple-400 font-bold tracking-wider bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
-              40% CUT
-            </span>
-          </div>
-          <p className="text-2xl font-extrabold text-purple-400">฿{talentRevenue.toLocaleString()}</p>
-          <p className="text-gray-500 text-xs mt-1">Talent Payout Total</p>
-        </div>
-
-        {/* Active Streams */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-indigo-500/30 transition-all duration-200 relative group overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/5 rounded-full blur-2xl group-hover:bg-indigo-600/10 transition-all duration-200" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600/15 flex items-center justify-center">
-              <Tv size={16} className="text-indigo-400" />
-            </div>
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-          </div>
-          <p className="text-2xl font-extrabold text-white">4 Talents</p>
-          <p className="text-gray-500 text-xs mt-1">Managed Roster Size</p>
-        </div>
-      </div>
-
-      {/* Revenue Splitter Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-6 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Revenue Splitter</h2>
-            <p className="text-gray-400 text-xs">Income breakdown & payout statuses per contract model</p>
-          </div>
-          
-          <button className="self-start sm:self-auto bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-violet-950/50">
-            Generate Payout Report
-          </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-950/65 text-gray-400 text-xs font-bold uppercase tracking-wider border-b border-gray-800">
-                <th className="py-4 px-6">VTuber Name</th>
-                <th className="py-4 px-6">Superchats/Subs</th>
-                <th className="py-4 px-6">Merch Sales</th>
-                <th className="py-4 px-6 text-violet-400">Agency Share (60%)</th>
-                <th className="py-4 px-6 text-purple-400">Talent Share (40%)</th>
-                <th className="py-4 px-6">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800/50">
-              {data.map((talent) => {
-                const gross = talent.superchat + talent.merch
-                const agencySplit = gross * 0.60
-                const talentSplit = gross * 0.40
-
-                return (
-                  <tr key={talent.id} className="hover:bg-gray-800/30 transition-colors duration-150">
-                    {/* VTuber */}
-                    <td className="py-4.5 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white uppercase">
-                          {talent.name.charAt(0)}
-                        </div>
-                        <span className="text-sm font-semibold text-white">{talent.name}</span>
-                      </div>
-                    </td>
-                    
-                    {/* Superchats */}
-                    <td className="py-4.5 px-6 text-sm text-gray-300">
-                      ฿{talent.superchat.toLocaleString()}
-                    </td>
-
-                    {/* Merch */}
-                    <td className="py-4.5 px-6 text-sm text-gray-300">
-                      ฿{talent.merch.toLocaleString()}
-                    </td>
-
-                    {/* Agency Split */}
-                    <td className="py-4.5 px-6 text-sm font-semibold text-violet-400">
-                      ฿{agencySplit.toLocaleString()}
-                    </td>
-
-                    {/* Talent Split */}
-                    <td className="py-4.5 px-6 text-sm font-semibold text-purple-400">
-                      ฿{talentSplit.toLocaleString()}
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-4.5 px-6">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        talent.status === 'Paid'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {talent.status === 'Paid' && <CheckCircle size={12} />}
-                        {talent.status}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }

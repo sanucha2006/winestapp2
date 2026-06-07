@@ -13,7 +13,7 @@ import { useState } from 'react'
  * @returns {React.ReactElement} Modal ฟอร์มสรุปจบไลฟ์
  */
 export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue = 0, onSubmit, onClose }) {
-  // TODO: Bug Risk - Form State ใช้ defaultEndTime/defaultRevenue เป็น initial state แต่ไม่มี reset เมื่อ stream หรือ props เปลี่ยนระหว่าง Modal ยังเปิดอยู่
+  
   const [endTime, setEndTime] = useState(defaultEndTime)
   const [revenue, setRevenue] = useState(defaultRevenue)
 
@@ -25,7 +25,7 @@ export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue 
    */
   const handleSubmit = async (event) => {
     event.preventDefault()
-    // TODO: Bug Risk - ไม่มี loading/disabled state สำหรับป้องกัน Double Submission ระหว่างรอ onSubmit ทำงานเสร็จ
+    
     await onSubmit({
       endTime,
       revenue: Math.max(0, Number(revenue) || 0),

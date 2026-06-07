@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  LayoutDashboard, Trophy,
+  LayoutDashboard, Trophy, RefreshCw,
   Star, Crown, Loader2, AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -22,18 +22,23 @@ import {
   upsertVTuberAvailability,
 } from '../lib/supabaseservice'
 
-// ── Extracted Components ──
 import Toast from '../components/common/Toast'
 import OverviewTab from '../components/vtuber/OverviewTab'
 import { GoalsTab } from '../components/vtuber/GoalsTab'
 
-// ══════════════════════════════════════════════════════════════
-// 🏠 ROOT COMPONENT — VTuberDashboard
-// จัดการ state กลาง, โหลดข้อมูล, และส่ง props ลง Tab ย่อย
-// ══════════════════════════════════════════════════════════════
+/**
+ * แสดงหน้า VTuber Dashboard หลัก พร้อม Overview, Goals, ระบบเควส และการจัดการวันว่าง
+ *
+ * @param {void} ไม่มี parameter
+ * @returns {React.ReactElement} หน้า Dashboard สำหรับ VTuber ที่เข้าสู่ระบบ
+ */
 export default function VTuberDashboard() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('overview')
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['overview']))
+
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // ── Global states ──
   const [talent, setTalent] = useState(null)                // เก็บโปรไฟล์ของตนเอง { id, talent_name, stars }
@@ -59,10 +64,16 @@ export default function VTuberDashboard() {
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
 
-  // ── ฟังก์ชันแสดง Toast แจ้งเตือน ──
+  /**
+   * แสดง Toast แจ้งผลการทำงานของ action ต่าง ๆ ใน Dashboard
+   *
+   * @param {string} message - ข้อความที่ต้องการแสดง
+   * @param {boolean} [success=true] - ระบุว่าเป็นข้อความสำเร็จหรือข้อผิดพลาด
+   * @returns {void} ไม่มีค่า return
+   */
   const showToast = useCallback((message, success = true) => setToast({ message, success }), [])
 
-  // ── Effect: โหลดข้อมูลโปรไฟล์ Talent หลัง User เข้าสู่ระบบสำเร็จ ──
+  // โหลดโปรไฟล์ Talent ที่ผูกกับบัญชีผู้ใช้ปัจจุบัน
   useEffect(() => {
     if (!user?.id) return
     const timer = setTimeout(() => {
@@ -76,9 +87,9 @@ export default function VTuberDashboard() {
         .finally(() => setLoadingProfile(false))
     }, 0)
     return () => clearTimeout(timer)
-  }, [user?.id])
+  }, [user?.id, refreshKey])
 
-  // ── Effect: โหลดข้อมูลสตรีมและคลิปสั้นตามเดือนที่กำหนด ──
+  // โหลดข้อมูลปฏิทินของ VTuber ตามเดือนที่เลือก
   useEffect(() => {
     if (!talent?.id) return
     const timer = setTimeout(() => {
@@ -93,9 +104,9 @@ export default function VTuberDashboard() {
         .finally(() => setLoadingCalendar(false))
     }, 0)
     return () => clearTimeout(timer)
-  }, [talent?.id, calMonth])
+  }, [talent?.id, calMonth, refreshKey])
 
-  // ── Effect: โหลดรายการเควสของตนเอง ──
+  // โหลดรายการเควสที่มอบหมายให้ VTuber คนนี้
   useEffect(() => {
     if (!talent?.id) return
     const timer = setTimeout(() => {
@@ -106,9 +117,9 @@ export default function VTuberDashboard() {
         .finally(() => setLoadingQuests(false))
     }, 0)
     return () => clearTimeout(timer)
-  }, [talent?.id])
+  }, [talent?.id, refreshKey])
 
-  // ── Effect: โหลดสถิติบิล/ส่วนแบ่งรายได้ ──
+  // โหลดข้อมูลส่วนแบ่งรายได้สำหรับหน้า Goals
   useEffect(() => {
     if (!talent?.id) return
     const timer = setTimeout(() => {
@@ -119,9 +130,9 @@ export default function VTuberDashboard() {
         .finally(() => setLoadingBilling(false))
     }, 0)
     return () => clearTimeout(timer)
-  }, [talent?.id])
+  }, [talent?.id, refreshKey])
 
-  // ── Effect: โหลดวันทำงานโดยใช้ Frontend Cache ──
+  // โหลดวันว่างโดยใช้ cache ฝั่ง client แยกตามเดือน
   const monthKey = useMemo(() => {
     const year = calMonth.getFullYear()
     const month = calMonth.getMonth() + 1
@@ -131,8 +142,8 @@ export default function VTuberDashboard() {
   useEffect(() => {
     if (!talent?.user_id) return
 
-    // หากมีข้อมูลใน cache แล้ว ดึงมาใช้ได้เลย
-    if (availabilityCache[monthKey] !== undefined) {
+    // หากมีข้อมูลใน cache แล้ว ดึงมาใช้ได้เลย (ยกเว้นกด Refresh บังคับโหลดใหม่)
+    if (availabilityCache[monthKey] !== undefined && !isRefreshing) {
       setSavedDays(availabilityCache[monthKey])
       return
     }
@@ -145,16 +156,21 @@ export default function VTuberDashboard() {
         setSavedDays(sortedDays)
         setAvailabilityCache(prev => ({ ...prev, [monthKey]: sortedDays }))
       })
-      .catch(e => setError(e.message))
+      .catch(e => console.error(e))
       .finally(() => setLoadingAvailability(false))
-  }, [talent?.user_id, monthKey, availabilityCache])
+  }, [talent?.user_id, monthKey, availabilityCache, isRefreshing, refreshKey])
 
-  // ซิงก์ editingDays กับ savedDays เมื่อมีการโหลดข้อมูลสำเร็จหรือเปลี่ยนเดือน
+  // อัปเดต editingDays เมื่อ savedDays เปลี่ยนอมีการโหลดข้อมูลสำเร็จหรือเปลี่ยนเดือน
   useEffect(() => {
     setEditingDays(savedDays)
   }, [savedDays])
 
-  // ── Handlers: จัดการสลับโหมด แก้ไขวันทำงาน และบันทึก/ยกเลิก ──
+  /**
+   * สลับวันว่างในโหมดแก้ไข โดยเพิ่มหรือลบเลขวันที่ออกจาก editingDays
+   *
+   * @param {number} day - เลขวันที่ในเดือนที่ต้องการสลับสถานะ
+   * @returns {void} ไม่มีค่า return
+   */
   const handleToggleDay = useCallback((day) => {
     setEditingDays(prev => {
       if (prev.includes(day)) {
@@ -165,16 +181,34 @@ export default function VTuberDashboard() {
     })
   }, [])
 
+  /**
+   * เริ่มโหมดแก้ไขวันว่าง โดยคัดลอกค่าที่บันทึกไว้มาเป็นค่าแก้ไข
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleStartEdit = useCallback(() => {
     setEditingDays([...savedDays])
     setIsEditMode(true)
   }, [savedDays])
 
+  /**
+   * ยกเลิกโหมดแก้ไขวันว่างและคืนค่า editingDays กลับเป็นค่าที่บันทึกไว้
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleCancelEdit = useCallback(() => {
     setEditingDays([...savedDays])
     setIsEditMode(false)
   }, [savedDays])
 
+  /**
+   * บันทึกวันว่างของ VTuber ลงฐานข้อมูลและอัปเดต cache ของเดือนปัจจุบัน
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {Promise<void>} Promise ที่ resolve เมื่อบันทึกและอัปเดต state เสร็จ
+   */
   const handleSaveAvailability = useCallback(async () => {
     if (!talent?.user_id) return
     try {
@@ -195,6 +229,12 @@ export default function VTuberDashboard() {
     }
   }, [talent?.user_id, calMonth, editingDays, monthKey, showToast])
 
+  /**
+   * เลือกทุกวันในเดือนปัจจุบันเป็นวันว่างในโหมดแก้ไข
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleMarkAllAvailable = useCallback(() => {
     const year = calMonth.getFullYear()
     const month = calMonth.getMonth() + 1
@@ -203,11 +243,22 @@ export default function VTuberDashboard() {
     setEditingDays(allDays)
   }, [calMonth])
 
+  /**
+   * ล้างวันว่างทั้งหมดในโหมดแก้ไข
+   *
+   * @param {void} ไม่มี parameter
+   * @returns {void} ไม่มีค่า return
+   */
   const handleMarkNoneAvailable = useCallback(() => {
     setEditingDays([])
   }, [])
 
-  // ── Handler: กดปุ่มส่งเควสไปตรวจสอบเงื่อนไขที่ Database RPC ──
+  /**
+   * ส่งเควสไปตรวจสอบผ่าน RPC และอัปเดต progress, status หรือ stars ตามผลลัพธ์
+   *
+   * @param {number} transactionId - id ของ talent_quest_transactions ที่ต้องการส่งตรวจ
+   * @returns {Promise<void>} Promise ที่ resolve เมื่ออัปเดตผลลัพธ์บนหน้าเสร็จ
+   */
   const handleSubmitQuest = useCallback(async (transactionId) => {
     if (!talent?.id) return
     try {
@@ -314,26 +365,51 @@ export default function VTuberDashboard() {
             </div>
           </div>
 
-          {/* ดาวสะสม (Stars) */}
-          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 px-4 py-2 rounded-xl">
-            <Star size={15} className="text-amber-400 fill-amber-400" />
-            <span className="text-base font-black text-amber-300 tabular-nums">
-              {(talent?.stars ?? 0).toLocaleString()}
-            </span>
-            <span className="text-[10px] text-amber-500/80 font-medium">STARS</span>
+          <div className="flex items-center gap-2">
+            {/* ── Refresh Button ── */}
+            <button
+              onClick={() => {
+                setIsRefreshing(true)
+                setRefreshKey(k => k + 1)
+                setTimeout(() => setIsRefreshing(false), 800)
+              }}
+              disabled={isRefreshing}
+              title="รีเฟรชข้อมูลทั้งหมด"
+              className="flex items-center gap-1.5 text-[10px] font-bold px-3 py-1.5 rounded-lg
+                bg-white/[0.03] hover:bg-violet-500/10 text-slate-400 hover:text-violet-300
+                border border-white/[0.06] hover:border-violet-500/20 transition-all
+                disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <RefreshCw size={11} className={isRefreshing ? 'animate-spin text-violet-400' : ''} />
+              <span className="hidden sm:inline">
+                {isRefreshing ? 'กำลังรีเฟรช...' : 'Refresh'}
+              </span>
+            </button>
+
+            {/* ดาวสะสม (Stars) */}
+            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-lg">
+              <Star size={13} className="text-amber-400 fill-amber-400" />
+              <span className="text-sm font-black text-amber-300 tabular-nums">
+                {(talent?.stars ?? 0).toLocaleString()}
+              </span>
+              <span className="text-[9px] text-amber-500/80 font-bold hidden sm:inline">STARS</span>
+            </div>
           </div>
         </div>
 
-        {/* ── Tab Switcher — Unified Slate Obsidian Card ── */}
-        <div className="flex bg-[#0d0d16] border border-white/[0.05] rounded-xl p-1 shadow-md">
+        {/* ── Tab Switcher ── */}
+        <div className="flex bg-[#0d0d16] border border-white/[0.05] rounded-xl p-1 shadow-md gap-0.5">
           {TABS.map(tab => {
             const Icon = tab.icon
             const active = activeTab === tab.id
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 flex-1 justify-center
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setVisitedTabs(prev => new Set(prev).add(tab.id))
+                }}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-bold transition-all duration-200 flex-1 justify-center
                   ${active 
                     ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-indigo-900/20' 
                     : 'text-slate-400 hover:text-white hover:bg-white/[0.02]'}`}
@@ -346,7 +422,7 @@ export default function VTuberDashboard() {
         </div>
 
         {/* ── Tab Contents Area ── */}
-        {activeTab === 'overview' && (
+        <div className={activeTab === 'overview' ? 'block' : 'hidden'}>
           <OverviewTab
             talent={talent}
             streams={streams}
@@ -368,19 +444,22 @@ export default function VTuberDashboard() {
             savingAvailability={savingAvailability}
             loadingAvailability={loadingAvailability}
           />
-        )}
-        {activeTab === 'goals' && (
-          <GoalsTab
-            talent={talent}
-            quests={quests}
-            streams={streams}
-            clips={clips}
-            billingRecords={billingRecords}
-            calMonth={calMonth}
-            setCalMonth={setCalMonth}
-            loadingBilling={loadingBilling}
-            onSubmitQuest={handleSubmitQuest}
-          />
+        </div>
+        
+        {visitedTabs.has('goals') && (
+          <div className={activeTab === 'goals' ? 'block' : 'hidden'}>
+            <GoalsTab
+              talent={talent}
+              quests={quests}
+              streams={streams}
+              clips={clips}
+              billingRecords={billingRecords}
+              calMonth={calMonth}
+              setCalMonth={setCalMonth}
+              loadingBilling={loadingBilling}
+              onSubmitQuest={handleSubmitQuest}
+            />
+          </div>
         )}
       </div>
 

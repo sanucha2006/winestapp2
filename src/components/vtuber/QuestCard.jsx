@@ -46,8 +46,8 @@ export default function QuestCard({ tx, onSubmit }) {
   const [submitting, setSubmitting] = useState(false) // สถานะกำลังส่งเควสไปตรวจ
   const [expanded, setExpanded] = useState(false)     // เปิด/ปิด การแสดงรายละเอียดเพิ่มเติม
 
-  // TODO: Bug Risk - พิจารณาการแยก Props ให้เล็กลง เพราะ QuestCard รับ tx object ขนาดใหญ่และอ่านข้อมูลซ้อนหลายชั้น
-  // TODO: Bug Risk - พิจารณา useMemo สำหรับการคำนวณข้อมูล เพราะมีการคำนวณ config/progress/status จาก tx ใน render body
+  
+  
   const q          = tx.quests ?? {}
   const cfg        = FREQ_CONFIG[q.frequency] ?? FREQ_CONFIG.weekly
   const targetCfg  = TARGET_CONFIG[q.target_type] ?? TARGET_CONFIG.short_video
@@ -58,6 +58,12 @@ export default function QuestCard({ tx, onSubmit }) {
   const target   = q.target_value ?? 1
   const pct      = Math.min(100, Math.round((current / target) * 100))
   const isDone   = tx.is_done
+  const isLive   = q.target_type === 'livestream'
+
+  // ฟอร์แมตเพื่อแสดงผล ถ้าเป็นไลฟ์สตรีมให้เอา (นาที / 60) เพื่อโชว์เป็นชั่วโมงให้สวยงาม
+  const formatValue = (v) => Number.isInteger(v) ? v : Number(v.toFixed(1))
+  const displayCurrent = isLive ? formatValue(current / 60) : current
+  const displayTarget  = isLive ? formatValue(target / 60) : target
 
   // ฟังก์ชันควบคุมปุ่มตรวจสอบ/ส่งเควส
   /**
@@ -98,7 +104,7 @@ export default function QuestCard({ tx, onSubmit }) {
             <div className="mt-2">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[10px] text-slate-400">
-                  {current}/{target} {targetCfg.unit}
+                  {displayCurrent} / {displayTarget} {targetCfg.unit}
                 </span>
                 <span className="text-[10px] font-bold text-slate-300">{pct}%</span>
               </div>

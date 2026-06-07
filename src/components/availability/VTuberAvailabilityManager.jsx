@@ -143,7 +143,7 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
       setIsEditMode(false)
       setSuccessMessage('บันทึกวันทำงานสำเร็จ ✓')
 
-      // TODO: Bug Risk - setTimeout นี้ไม่มีการ cleanup หาก component unmount ก่อน 3 วินาทีจะเกิด memory leak
+      
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (e) {
       setError(e.message)
