@@ -1,4 +1,4 @@
-import { CheckCircle, X } from 'lucide-react'
+import { CheckCircle, X, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 
 /**
@@ -16,6 +16,7 @@ export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue 
   
   const [endTime, setEndTime] = useState(defaultEndTime)
   const [revenue, setRevenue] = useState(defaultRevenue)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   /**
    * Submit ข้อมูลเวลาจบไลฟ์และรายได้เพื่ออัปเดต Stream Event
@@ -25,11 +26,17 @@ export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue 
    */
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (isSubmitting) return
     
-    await onSubmit({
-      endTime,
-      revenue: Math.max(0, Number(revenue) || 0),
-    })
+    setIsSubmitting(true)
+    try {
+      await onSubmit({
+        endTime,
+        revenue: Math.max(0, Number(revenue) || 0),
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -81,14 +88,14 @@ export default function EndStreamModal({ stream, defaultEndTime, defaultRevenue 
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+            <button type="button" onClick={onClose} disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors disabled:opacity-50">
               ยกเลิก
             </button>
-            <button type="submit"
-              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-md shadow-emerald-950/40 flex items-center gap-1.5">
-              <CheckCircle size={14} />
-              บันทึกจบไลฟ์
+            <button type="submit" disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors shadow-md shadow-emerald-950/40 flex items-center gap-1.5 disabled:opacity-50">
+              {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกจบไลฟ์'}
             </button>
           </div>
         </form>

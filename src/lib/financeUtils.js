@@ -4,6 +4,13 @@
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * ปัดเศษทศนิยม 2 ตำแหน่ง เพื่อแก้ปัญหา Floating-point precision ของ JavaScript
+ * @param {number} value - ค่าเงินที่ต้องการปัดเศษ
+ * @returns {number} ค่าเงินที่ปัดเศษเรียบร้อยแล้ว
+ */
+const roundCurrency = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/**
  * คำนวณรายได้ส่วนแบ่งทางธุรกิจประเภทคอมมิชชัน (Commission Financials)
  * แบ่งสัดส่วนเป็น: บริษัท 10%, กองกลางของทีม 90%, และนำกองกลางทีมมาแบ่งให้พาร์ทเนอร์
  * ก่อนจะสรุปเป็นส่วนแบ่งคงเหลือของผู้จัดการหลัก (Owner Share)
@@ -20,12 +27,17 @@
  * @returns {{ gross: number, companyShare: number, teamPool: number, ownerShare: number, partnersTotal: number }} ผลลัพธ์การคำนวณส่วนแบ่งการเงิน
  */
 export function getCommissionFinancials(taskOrDraft) {
-  const gross = Number(taskOrDraft.revenue ?? taskOrDraft.totalRevenue ?? taskOrDraft.total_revenue ?? 0) || 0
+  const gross = roundCurrency(taskOrDraft.revenue ?? taskOrDraft.totalRevenue ?? taskOrDraft.total_revenue ?? 0)
   const partners = taskOrDraft.partners ?? []
-  const companyShare = gross * 0.1
-  const teamPool = gross * 0.9
-  const partnersTotal = partners.reduce((sum, partner) => sum + (Number(partner.amount) || 0), 0)
-  const ownerShare = Math.max(0, teamPool - partnersTotal)
+  
+  const companyShare = roundCurrency(gross * 0.1)
+  const teamPool = roundCurrency(gross * 0.9)
+  
+  const partnersTotal = roundCurrency(
+    partners.reduce((sum, partner) => sum + (Number(partner.amount) || 0), 0)
+  )
+  
+  const ownerShare = Math.max(0, roundCurrency(teamPool - partnersTotal))
 
   return { gross, companyShare, teamPool, ownerShare, partnersTotal }
 }
@@ -42,10 +54,10 @@ export function getCommissionFinancials(taskOrDraft) {
  * @returns {{ gross: number, companyShare: number, talentShare: number }} ผลลัพธ์การคำนวณส่วนแบ่งการเงินของสตรีม
  */
 export function getStreamFinancials(stream) {
-  const gross = Number(stream.revenue) || 0
+  const gross = roundCurrency(stream.revenue)
   return {
     gross,
-    companyShare: gross * 0.6,
-    talentShare: gross * 0.4,
+    companyShare: roundCurrency(gross * 0.6),
+    talentShare: roundCurrency(gross * 0.4),
   }
 }

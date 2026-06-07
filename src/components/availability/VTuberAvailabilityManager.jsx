@@ -47,6 +47,8 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
   useEffect(() => {
     if (!talentId) return
 
+    let isActive = true
+
     const loadAvailability = async () => {
       try {
         setLoading(true)
@@ -56,16 +58,29 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
         setEditingDays([])
 
         const days = await getVTuberAvailability(talentId, year, month)
-        setSavedDays(days || [])
+        if (isActive) setSavedDays(days || [])
       } catch (e) {
-        setError(e.message)
+        if (isActive) setError(e.message)
       } finally {
-        setLoading(false)
+        if (isActive) setLoading(false)
       }
     }
 
     loadAvailability()
+
+    return () => {
+      isActive = false
+    }
   }, [talentId, year, month])
+
+  // Clear success message timeout safely
+  useEffect(() => {
+    let timer
+    if (successMessage) {
+      timer = setTimeout(() => setSuccessMessage(null), 3000)
+    }
+    return () => clearTimeout(timer)
+  }, [successMessage])
 
   /**
    * คำนวณจำนวนวันทั้งหมดในเดือนปัจจุบัน
@@ -142,9 +157,6 @@ export default function VTuberAvailabilityManager({ talentId, currentDate }) {
       setSavedDays(sortedDays)
       setIsEditMode(false)
       setSuccessMessage('บันทึกวันทำงานสำเร็จ ✓')
-
-      
-      setTimeout(() => setSuccessMessage(null), 3000)
     } catch (e) {
       setError(e.message)
     } finally {

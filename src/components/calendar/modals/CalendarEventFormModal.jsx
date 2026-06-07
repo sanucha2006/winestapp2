@@ -28,6 +28,8 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
   onSubmit,
   onClose,
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const isBusy = saving || isSubmitting
   
   const [taskType, setTaskType] = useState(allowedTypes[0] ?? 'stream')
   const [commission, setCommission] = useState({ title: '', revenue: 0, startDate: date, endDate: date, description: '', talentId: '' })
@@ -86,13 +88,19 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
    */
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (isBusy) return
     
-    const payload = taskType === 'commission'
-      ? { ...commission, partners }
-      : taskType === 'stream'
-        ? stream
-        : clip
-    await onSubmit(taskType, payload)
+    setIsSubmitting(true)
+    try {
+      const payload = taskType === 'commission'
+        ? { ...commission, partners }
+        : taskType === 'stream'
+          ? stream
+          : clip
+      await onSubmit(taskType, payload)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -221,9 +229,9 @@ const CalendarEventFormModal = memo(function CalendarEventFormModal({
             </div>
           )}
 
-          <button type="submit" disabled={saving}
+          <button type="submit" disabled={isBusy}
             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm py-3 rounded-xl transition-all shadow-md mt-2 flex items-center justify-center gap-2">
-            {saving ? <><Loader2 size={15} className="animate-spin" /> กำลังบันทึก...</> : 'บันทึกแผนงาน'}
+            {isBusy ? <><Loader2 size={15} className="animate-spin" /> กำลังบันทึก...</> : 'บันทึกแผนงาน'}
           </button>
         </form>
       </div>

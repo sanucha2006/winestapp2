@@ -18,7 +18,7 @@ import { useAuth } from '../../contexts/AuthContext'
 export default function ProtectedRoute({ children, allowedRoles }) {
   const { user, role, loading } = useAuth()
 
-  if (loading && user) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -29,10 +29,6 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         </div>
       </div>
     )
-  }
-
-  if (!user && !loading) {
-    return <Navigate to="/login" replace />
   }
 
   if (!user) {

@@ -47,6 +47,8 @@ export default function TeamAvailabilityViewer({
   useEffect(() => {
     if (!selectedTalentId) return
 
+    let isActive = true
+
     const loadAvailability = async () => {
       try {
         setLoading(true)
@@ -55,10 +57,13 @@ export default function TeamAvailabilityViewer({
         const talentCache = availabilityCache?.[selectedTalentId] || {}
 
         if (talentCache[monthKey]) {
+          if (isActive) setLoading(false)
           return
         }
 
         const availableDays = await getVTuberAvailability(selectedTalentId, year, month)
+
+        if (!isActive) return
 
         if (onCacheUpdate) {
           onCacheUpdate(prevCache => ({
@@ -70,13 +75,17 @@ export default function TeamAvailabilityViewer({
           }))
         }
       } catch (e) {
-        setError(e.message)
+        if (isActive) setError(e.message)
       } finally {
-        setLoading(false)
+        if (isActive) setLoading(false)
       }
     }
 
     loadAvailability()
+
+    return () => {
+      isActive = false
+    }
   }, [selectedTalentId, year, month, monthKey, availabilityCache, onCacheUpdate])
 
   /**
@@ -105,7 +114,7 @@ export default function TeamAvailabilityViewer({
    * ควรเพิ่ม debounce หรือใช้ AbortController
    */
   const handleForceRefresh = async () => {
-    if (!selectedTalentId) return
+    if (!selectedTalentId || loading) return
     try {
       setLoading(true)
       setError(null)
