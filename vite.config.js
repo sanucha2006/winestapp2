@@ -18,7 +18,19 @@ export default defineConfig({
         icons: [
           {
             src: '/winest_logo.png',
-            sizes: '192x192 256x256 384x384 512x512 1024x1024',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
+            src: '/winest_logo.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
+            src: '/winest_logo.png',
+            sizes: '1024x1024',
             type: 'image/png',
             purpose: 'any maskable'
           }
